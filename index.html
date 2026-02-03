@@ -83,6 +83,7 @@
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
+            align-items: center;
         }
 
         .sort-btn {
@@ -114,6 +115,23 @@
 
         .time-select option {
             background: #1a1a1a;
+            color: #fff;
+        }
+
+        .fullscreen-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: auto;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255,255,255,0.2);
             color: #fff;
         }
 
@@ -183,6 +201,16 @@
         .post-title a {
             color: #fff;
             text-decoration: none;
+        }
+
+        .gallery-indicator {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 2px 8px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
         }
 
         /* Navigation Arrows */
@@ -362,6 +390,7 @@
                 <option value="year">This Year</option>
                 <option value="all">All Time</option>
             </select>
+            <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
         </div>
         <div class="error" id="error" style="display: none;"></div>
     </header>
@@ -388,7 +417,7 @@
 
     <script>
         const state = {
-            posts: [],
+            slides: [],         // Flattened array of all slides (including gallery images)
             currentIndex: 0,
             sort: 'hot',
             time: 'all',
@@ -405,6 +434,7 @@
             subredditInput: document.getElementById('subredditInput'),
             loadBtn: document.getElementById('loadBtn'),
             timeSelect: document.getElementById('timeSelect'),
+            fullscreenBtn: document.getElementById('fullscreenBtn'),
             error: document.getElementById('error'),
             progress: document.getElementById('progress'),
             counter: document.getElementById('counter'),
@@ -417,6 +447,25 @@
             touchCenter: document.getElementById('touchCenter'),
             touchRight: document.getElementById('touchRight')
         };
+
+        // Fullscreen functionality
+        elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log('Fullscreen not supported:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            elements.fullscreenBtn.textContent = document.fullscreenElement
+                ? '⛶ Exit Fullscreen'
+                : '⛶ Fullscreen';
+        });
 
         // Sort button handlers
         document.querySelectorAll('.sort-btn').forEach(btn => {
@@ -451,7 +500,7 @@
 
         async function loadSubreddit(subreddit) {
             state.subreddit = subreddit;
-            state.posts = [];
+            state.slides = [];
             state.currentIndex = 0;
             state.after = null;
             state.loading = true;
@@ -464,7 +513,7 @@
             try {
                 await fetchPosts();
 
-                if (state.posts.length === 0) {
+                if (state.slides.length === 0) {
                     elements.emptyState.innerHTML = '<div class="empty-state"><h2>No media found</h2><p>This subreddit has no image or video posts</p></div>';
                 } else {
                     elements.emptyState.style.display = 'none';
@@ -536,75 +585,85 @@
 
             state.after = data.data.after;
 
-            const mediaPosts = data.data.children
-                .map(child => child.data)
-                .filter(post => {
-                    // Check for direct image
-                    if (post.url && /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(post.url)) {
-                        return true;
-                    }
-                    // Check for Reddit hosted video
-                    if (post.is_video && post.media?.reddit_video?.fallback_url) {
-                        return true;
-                    }
-                    // Check for Reddit gallery
-                    if (post.is_gallery && post.media_metadata) {
-                        return true;
-                    }
-                    // Check for preview images
-                    if (post.preview?.images?.[0]?.source?.url) {
-                        return true;
-                    }
-                    return false;
-                })
-                .map(post => ({
-                    id: post.id,
-                    title: post.title,
-                    permalink: `https://reddit.com${post.permalink}`,
-                    ...getMediaInfo(post)
-                }));
+            const newSlides = [];
 
-            state.posts = loadMore ? [...state.posts, ...mediaPosts] : mediaPosts;
+            data.data.children.forEach(child => {
+                const post = child.data;
+                const slides = getMediaSlides(post);
+                newSlides.push(...slides);
+            });
+
+            state.slides = loadMore ? [...state.slides, ...newSlides] : newSlides;
         }
 
-        function getMediaInfo(post) {
+        function getMediaSlides(post) {
+            const slides = [];
+            const baseInfo = {
+                postId: post.id,
+                title: post.title,
+                permalink: `https://reddit.com${post.permalink}`
+            };
+
+            // Reddit Gallery - extract ALL images
+            if (post.is_gallery && post.media_metadata && post.gallery_data) {
+                const galleryItems = post.gallery_data.items || [];
+                const totalImages = galleryItems.length;
+
+                galleryItems.forEach((item, index) => {
+                    const media = post.media_metadata[item.media_id];
+                    if (media?.s?.u) {
+                        slides.push({
+                            ...baseInfo,
+                            type: 'image',
+                            url: media.s.u,
+                            isGallery: true,
+                            galleryIndex: index + 1,
+                            galleryTotal: totalImages
+                        });
+                    }
+                });
+
+                if (slides.length > 0) return slides;
+            }
+
             // Direct image URL
             if (post.url && /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(post.url)) {
-                return { type: 'image', url: post.url };
+                slides.push({
+                    ...baseInfo,
+                    type: 'image',
+                    url: post.url
+                });
+                return slides;
             }
 
             // Reddit video
             if (post.is_video && post.media?.reddit_video?.fallback_url) {
-                return {
+                slides.push({
+                    ...baseInfo,
                     type: 'video',
                     url: post.media.reddit_video.fallback_url,
                     hasAudio: post.media.reddit_video.has_audio
-                };
+                });
+                return slides;
             }
 
-            // Gallery - get first image
-            if (post.is_gallery && post.media_metadata) {
-                const firstKey = Object.keys(post.media_metadata)[0];
-                const media = post.media_metadata[firstKey];
-                if (media?.s?.u) {
-                    return { type: 'image', url: media.s.u };
-                }
-            }
-
-            // Preview image
+            // Preview image (fallback)
             if (post.preview?.images?.[0]?.source?.url) {
-                return { type: 'image', url: post.preview.images[0].source.url };
+                slides.push({
+                    ...baseInfo,
+                    type: 'image',
+                    url: post.preview.images[0].source.url
+                });
+                return slides;
             }
 
-            return { type: 'unknown', url: null };
+            return slides;
         }
 
         function renderSlideshow() {
-            // Clear existing slides
             const existingSlides = elements.slideshow.querySelectorAll('.slide');
             existingSlides.forEach(slide => slide.remove());
 
-            // Create slides for visible posts (current, prev, next)
             updateSlides();
             updateProgress();
             updateCounter();
@@ -616,7 +675,6 @@
             const existingSlides = container.querySelectorAll('.slide');
             existingSlides.forEach(slide => slide.remove());
 
-            // Create slides for current, previous, and next
             const indices = [
                 state.currentIndex - 1,
                 state.currentIndex,
@@ -624,8 +682,8 @@
             ];
 
             indices.forEach((index, i) => {
-                if (index >= 0 && index < state.posts.length) {
-                    const post = state.posts[index];
+                if (index >= 0 && index < state.slides.length) {
+                    const slideData = state.slides[index];
                     const slide = document.createElement('div');
                     slide.className = 'slide';
 
@@ -633,15 +691,15 @@
                     else if (i === 1) slide.classList.add('active');
                     else if (i === 2) slide.classList.add('next');
 
-                    if (post.type === 'image') {
+                    if (slideData.type === 'image') {
                         const img = document.createElement('img');
-                        img.src = post.url;
-                        img.alt = post.title;
+                        img.src = slideData.url;
+                        img.alt = slideData.title;
                         img.loading = 'lazy';
                         slide.appendChild(img);
-                    } else if (post.type === 'video') {
+                    } else if (slideData.type === 'video') {
                         const video = document.createElement('video');
-                        video.src = post.url;
+                        video.src = slideData.url;
                         video.controls = true;
                         video.loop = true;
                         video.playsInline = true;
@@ -657,10 +715,10 @@
 
         function updateProgress() {
             const maxDots = 50;
-            const totalPosts = state.posts.length;
+            const totalSlides = state.slides.length;
 
-            if (totalPosts <= maxDots) {
-                elements.progress.innerHTML = state.posts.map((_, i) => {
+            if (totalSlides <= maxDots) {
+                elements.progress.innerHTML = state.slides.map((_, i) => {
                     let className = 'progress-bar';
                     if (i < state.currentIndex) className += ' viewed';
                     else if (i === state.currentIndex) className += ' current';
@@ -674,13 +732,19 @@
         }
 
         function updateCounter() {
-            elements.counter.textContent = `${state.currentIndex + 1} / ${state.posts.length}`;
+            elements.counter.textContent = `${state.currentIndex + 1} / ${state.slides.length}`;
         }
 
         function updateTitle() {
-            const post = state.posts[state.currentIndex];
-            if (post) {
-                elements.postTitle.innerHTML = `<a href="${post.permalink}" target="_blank" rel="noopener">${escapeHtml(post.title)}</a>`;
+            const slideData = state.slides[state.currentIndex];
+            if (slideData) {
+                let html = `<a href="${slideData.permalink}" target="_blank" rel="noopener">${escapeHtml(slideData.title)}</a>`;
+
+                if (slideData.isGallery) {
+                    html += `<span class="gallery-indicator">${slideData.galleryIndex}/${slideData.galleryTotal}</span>`;
+                }
+
+                elements.postTitle.innerHTML = html;
                 elements.postTitle.classList.toggle('hidden', !state.uiVisible);
             }
         }
@@ -694,11 +758,10 @@
         function navigate(direction) {
             const newIndex = state.currentIndex + direction;
 
-            if (newIndex < 0 || newIndex >= state.posts.length) {
+            if (newIndex < 0 || newIndex >= state.slides.length) {
                 return;
             }
 
-            // Pause current video if playing
             const currentVideo = elements.slideshow.querySelector('.slide.active video');
             if (currentVideo) {
                 currentVideo.pause();
@@ -710,8 +773,7 @@
             updateCounter();
             updateTitle();
 
-            // Load more posts when near the end
-            if (state.posts.length - state.currentIndex < 10 && state.after && !state.loading) {
+            if (state.slides.length - state.currentIndex < 10 && state.after && !state.loading) {
                 state.loading = true;
                 fetchPosts(true).then(() => {
                     state.loading = false;
@@ -762,6 +824,10 @@
                 case 'Escape':
                     showUI();
                     break;
+                case 'f':
+                case 'F':
+                    toggleFullscreen();
+                    break;
             }
         });
 
@@ -780,7 +846,6 @@
             const deltaX = touchEndX - touchStartX;
             const deltaY = touchEndY - touchStartY;
 
-            // Only trigger swipe if horizontal movement is greater than vertical
             if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
                 if (deltaX > 0) {
                     navigate(-1);
