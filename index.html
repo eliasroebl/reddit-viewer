@@ -2,22 +2,30 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0a0a">
     <title>Reddit Viewer</title>
+    <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Reddit Viewer&quot;,&quot;short_name&quot;:&quot;RedditView&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%230a0a0a&quot;,&quot;theme_color&quot;:&quot;%230a0a0a&quot;}">
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        body {
+        html, body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #0a0a0a;
             color: #fff;
             overflow: hidden;
-            height: 100dvh;
-            width: 100vw;
+            height: 100%;
+            width: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
         }
 
         /* Header / Controls */
@@ -27,72 +35,91 @@
             left: 0;
             right: 0;
             z-index: 100;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
-            padding: 16px;
-            padding-top: max(16px, env(safe-area-inset-top));
-            transition: transform 0.3s ease;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 70%, rgba(0,0,0,0) 100%);
+            padding: 12px 16px 20px;
+            padding-top: max(12px, env(safe-area-inset-top));
+            transition: transform 0.3s ease, opacity 0.3s ease;
         }
 
         .header.hidden {
             transform: translateY(-100%);
+            opacity: 0;
         }
 
-        .subreddit-form {
+        .top-row {
             display: flex;
             gap: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
+            align-items: center;
         }
 
         .subreddit-input {
             flex: 1;
-            padding: 12px 16px;
+            padding: 10px 16px;
             border: none;
-            border-radius: 24px;
-            background: rgba(255,255,255,0.15);
+            border-radius: 20px;
+            background: rgba(255,255,255,0.12);
             color: #fff;
             font-size: 16px;
             outline: none;
+            min-width: 0;
         }
 
         .subreddit-input::placeholder {
-            color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.4);
         }
 
-        .load-btn {
-            padding: 12px 20px;
+        .subreddit-input:focus {
+            background: rgba(255,255,255,0.18);
+        }
+
+        .icon-btn {
+            width: 40px;
+            height: 40px;
             border: none;
-            border-radius: 24px;
-            background: #ff4500;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.12);
             color: #fff;
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 18px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
             transition: background 0.2s;
         }
 
-        .load-btn:hover {
+        .icon-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .icon-btn:active {
+            background: rgba(255,255,255,0.25);
+        }
+
+        .icon-btn.primary {
+            background: #ff4500;
+        }
+
+        .icon-btn.primary:hover {
             background: #ff5722;
         }
 
-        .load-btn:disabled {
-            background: #666;
-            cursor: not-allowed;
-        }
-
-        .sort-controls {
+        .sort-row {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
             align-items: center;
         }
 
         .sort-btn {
-            padding: 8px 16px;
+            padding: 6px 14px;
             border: none;
-            border-radius: 16px;
-            background: rgba(255,255,255,0.1);
-            color: rgba(255,255,255,0.7);
-            font-size: 14px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.6);
+            font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
         }
@@ -103,35 +130,18 @@
         }
 
         .time-select {
-            padding: 8px 12px;
+            padding: 6px 10px;
             border: none;
-            border-radius: 16px;
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-            font-size: 14px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
             cursor: pointer;
             outline: none;
         }
 
         .time-select option {
             background: #1a1a1a;
-            color: #fff;
-        }
-
-        .fullscreen-btn {
-            padding: 8px 12px;
-            border: none;
-            border-radius: 16px;
-            background: rgba(255,255,255,0.1);
-            color: rgba(255,255,255,0.7);
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-left: auto;
-        }
-
-        .fullscreen-btn:hover {
-            background: rgba(255,255,255,0.2);
             color: #fff;
         }
 
@@ -145,6 +155,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            background: #0a0a0a;
         }
 
         .slide {
@@ -155,8 +166,9 @@
             align-items: center;
             justify-content: center;
             opacity: 0;
-            transition: opacity 0.3s ease, transform 0.3s ease;
+            transition: opacity 0.25s ease, transform 0.25s ease;
             pointer-events: none;
+            will-change: transform, opacity;
         }
 
         .slide.active {
@@ -165,11 +177,13 @@
         }
 
         .slide.prev {
-            transform: translateX(-100%);
+            transform: translateX(-30%);
+            opacity: 0;
         }
 
         .slide.next {
-            transform: translateX(100%);
+            transform: translateX(30%);
+            opacity: 0;
         }
 
         .slide img,
@@ -177,25 +191,32 @@
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
         }
 
-        /* Post Title */
-        .post-title {
+        /* Bottom Bar */
+        .bottom-bar {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            padding: 60px 16px 16px;
-            padding-bottom: max(16px, env(safe-area-inset-bottom));
-            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
-            font-size: 14px;
-            line-height: 1.4;
+            padding: 40px 16px 12px;
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
+            background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 60%, rgba(0,0,0,0) 100%);
             z-index: 50;
-            transition: transform 0.3s ease;
+            transition: transform 0.3s ease, opacity 0.3s ease;
         }
 
-        .post-title.hidden {
+        .bottom-bar.hidden {
             transform: translateY(100%);
+            opacity: 0;
+        }
+
+        .post-title {
+            font-size: 14px;
+            line-height: 1.4;
+            margin-bottom: 8px;
         }
 
         .post-title a {
@@ -203,87 +224,63 @@
             text-decoration: none;
         }
 
-        .gallery-indicator {
-            display: inline-block;
-            margin-left: 8px;
-            padding: 2px 8px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 10px;
+        .post-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             font-size: 12px;
-            color: rgba(255,255,255,0.8);
+            color: rgba(255,255,255,0.5);
         }
 
-        /* Navigation Arrows */
-        .nav-btn {
-            position: fixed;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 50px;
-            height: 80px;
-            background: rgba(0,0,0,0.3);
-            border: none;
-            color: #fff;
-            font-size: 24px;
-            cursor: pointer;
-            z-index: 60;
-            opacity: 0;
-            transition: opacity 0.3s;
+        .gallery-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: rgba(255,255,255,0.9);
         }
 
-        .slideshow-container:hover .nav-btn {
-            opacity: 1;
-        }
-
-        .nav-btn.prev {
-            left: 0;
-            border-radius: 0 8px 8px 0;
-        }
-
-        .nav-btn.next {
-            right: 0;
-            border-radius: 8px 0 0 8px;
-        }
-
-        /* Progress Indicator */
-        .progress {
-            position: fixed;
-            top: max(120px, calc(env(safe-area-inset-top) + 110px));
-            left: 16px;
-            right: 16px;
+        .gallery-dots {
             display: flex;
             gap: 4px;
-            z-index: 90;
-            transition: opacity 0.3s;
+            margin-top: 10px;
         }
 
-        .progress.hidden {
-            opacity: 0;
+        .gallery-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            transition: all 0.2s;
         }
 
-        .progress-bar {
-            flex: 1;
-            height: 3px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 2px;
-            overflow: hidden;
-        }
-
-        .progress-bar.viewed {
-            background: rgba(255,255,255,0.8);
-        }
-
-        .progress-bar.current {
-            background: #ff4500;
+        .gallery-dot.active {
+            background: #fff;
+            width: 18px;
+            border-radius: 3px;
         }
 
         /* Counter */
         .counter {
             position: fixed;
-            top: max(130px, calc(env(safe-area-inset-top) + 120px));
+            top: max(100px, calc(env(safe-area-inset-top) + 90px));
             right: 16px;
             font-size: 12px;
-            color: rgba(255,255,255,0.6);
+            font-weight: 500;
+            color: rgba(255,255,255,0.5);
+            background: rgba(0,0,0,0.5);
+            padding: 4px 10px;
+            border-radius: 12px;
             z-index: 90;
+            transition: opacity 0.3s;
+        }
+
+        .counter.hidden {
+            opacity: 0;
         }
 
         /* Loading State */
@@ -293,16 +290,16 @@
             align-items: center;
             justify-content: center;
             gap: 16px;
-            color: rgba(255,255,255,0.6);
+            color: rgba(255,255,255,0.5);
         }
 
         .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(255,255,255,0.2);
+            width: 36px;
+            height: 36px;
+            border: 3px solid rgba(255,255,255,0.15);
             border-top-color: #ff4500;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
         }
 
         @keyframes spin {
@@ -313,73 +310,132 @@
         .empty-state {
             text-align: center;
             padding: 20px;
-            color: rgba(255,255,255,0.6);
+            color: rgba(255,255,255,0.5);
         }
 
         .empty-state h2 {
             margin-bottom: 8px;
             color: #fff;
+            font-weight: 600;
         }
 
         /* Error State */
         .error {
-            background: rgba(255,0,0,0.2);
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-top: 8px;
-            font-size: 14px;
+            background: rgba(255,68,68,0.15);
+            padding: 10px 14px;
+            border-radius: 12px;
+            margin-top: 10px;
+            font-size: 13px;
+            color: #ff6b6b;
         }
 
-        /* Touch feedback */
+        /* Touch zones */
         .touch-zone {
             position: fixed;
             top: 0;
             bottom: 0;
-            width: 30%;
             z-index: 55;
         }
 
         .touch-zone.left {
             left: 0;
+            width: 25%;
         }
 
         .touch-zone.right {
             right: 0;
+            width: 25%;
         }
 
         .touch-zone.center {
-            left: 30%;
-            width: 40%;
+            left: 25%;
+            width: 50%;
         }
 
-        /* Mobile adjustments */
-        @media (max-width: 480px) {
-            .nav-btn {
-                display: none;
-            }
+        /* Navigation hint on first load */
+        .nav-hint {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            gap: 40px;
+            color: rgba(255,255,255,0.4);
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 80;
         }
 
-        @media (min-width: 768px) {
-            .subreddit-form {
-                max-width: 500px;
-            }
+        .nav-hint.show {
+            opacity: 1;
         }
+
+        .nav-hint span {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-hint .arrow {
+            font-size: 32px;
+            opacity: 0.6;
+        }
+
+        /* Preloader for images */
+        .slide-loading {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top-color: rgba(255,255,255,0.4);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        /* Swipe animation feedback */
+        .swipe-feedback {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            opacity: 0;
+            transition: opacity 0.15s;
+            pointer-events: none;
+            z-index: 200;
+        }
+
+        .swipe-feedback.left { left: 20px; }
+        .swipe-feedback.right { right: 20px; }
+        .swipe-feedback.show { opacity: 1; }
     </style>
 </head>
 <body>
     <header class="header" id="header">
-        <form class="subreddit-form" id="subredditForm">
+        <form class="top-row" id="subredditForm">
             <input
                 type="text"
                 class="subreddit-input"
                 id="subredditInput"
-                placeholder="Enter subreddit (e.g., pics, videos)"
+                placeholder="Subreddit name..."
                 autocomplete="off"
                 autocapitalize="none"
+                spellcheck="false"
             >
-            <button type="submit" class="load-btn" id="loadBtn">Load</button>
+            <button type="submit" class="icon-btn primary" id="loadBtn" title="Load">▶</button>
+            <button type="button" class="icon-btn" id="fullscreenBtn" title="Fullscreen">⛶</button>
         </form>
-        <div class="sort-controls">
+        <div class="sort-row">
             <button class="sort-btn active" data-sort="hot">Hot</button>
             <button class="sort-btn" data-sort="new">New</button>
             <button class="sort-btn" data-sort="top">Top</button>
@@ -390,25 +446,32 @@
                 <option value="year">This Year</option>
                 <option value="all">All Time</option>
             </select>
-            <button class="fullscreen-btn" id="fullscreenBtn">⛶ Fullscreen</button>
         </div>
         <div class="error" id="error" style="display: none;"></div>
     </header>
 
-    <div class="progress hidden" id="progress"></div>
-    <div class="counter" id="counter"></div>
+    <div class="counter hidden" id="counter"></div>
 
     <div class="slideshow-container" id="slideshow">
         <div class="empty-state" id="emptyState">
             <h2>Reddit Viewer</h2>
-            <p>Enter a subreddit above to start browsing</p>
+            <p>Enter a subreddit to start browsing</p>
         </div>
     </div>
 
-    <button class="nav-btn prev" id="prevBtn">‹</button>
-    <button class="nav-btn next" id="nextBtn">›</button>
+    <div class="bottom-bar hidden" id="bottomBar">
+        <div class="post-title" id="postTitle"></div>
+        <div class="post-meta" id="postMeta"></div>
+        <div class="gallery-dots" id="galleryDots"></div>
+    </div>
 
-    <div class="post-title hidden" id="postTitle"></div>
+    <div class="nav-hint" id="navHint">
+        <span><span class="arrow">‹</span>Prev</span>
+        <span><span class="arrow">›</span>Next</span>
+    </div>
+
+    <div class="swipe-feedback left" id="swipeFeedbackLeft">‹</div>
+    <div class="swipe-feedback right" id="swipeFeedbackRight">›</div>
 
     <!-- Touch zones for mobile -->
     <div class="touch-zone left" id="touchLeft"></div>
@@ -417,85 +480,93 @@
 
     <script>
         const state = {
-            slides: [],         // Flattened array of all slides (including gallery images)
+            slides: [],
             currentIndex: 0,
             sort: 'hot',
             time: 'all',
             subreddit: '',
             loading: false,
             after: null,
-            uiVisible: true
+            uiVisible: true,
+            firstLoad: true
         };
 
-        // DOM Elements
         const elements = {
             header: document.getElementById('header'),
             subredditForm: document.getElementById('subredditForm'),
             subredditInput: document.getElementById('subredditInput'),
             loadBtn: document.getElementById('loadBtn'),
-            timeSelect: document.getElementById('timeSelect'),
             fullscreenBtn: document.getElementById('fullscreenBtn'),
+            timeSelect: document.getElementById('timeSelect'),
             error: document.getElementById('error'),
-            progress: document.getElementById('progress'),
             counter: document.getElementById('counter'),
             slideshow: document.getElementById('slideshow'),
             emptyState: document.getElementById('emptyState'),
+            bottomBar: document.getElementById('bottomBar'),
             postTitle: document.getElementById('postTitle'),
-            prevBtn: document.getElementById('prevBtn'),
-            nextBtn: document.getElementById('nextBtn'),
+            postMeta: document.getElementById('postMeta'),
+            galleryDots: document.getElementById('galleryDots'),
+            navHint: document.getElementById('navHint'),
             touchLeft: document.getElementById('touchLeft'),
             touchCenter: document.getElementById('touchCenter'),
-            touchRight: document.getElementById('touchRight')
+            touchRight: document.getElementById('touchRight'),
+            swipeFeedbackLeft: document.getElementById('swipeFeedbackLeft'),
+            swipeFeedbackRight: document.getElementById('swipeFeedbackRight')
         };
 
-        // Fullscreen functionality
-        elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
+        // Fullscreen
+        elements.fullscreenBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleFullscreen();
+        });
 
         function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    console.log('Fullscreen not supported:', err);
-                });
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                const el = document.documentElement;
+                if (el.requestFullscreen) {
+                    el.requestFullscreen();
+                } else if (el.webkitRequestFullscreen) {
+                    el.webkitRequestFullscreen();
+                }
             } else {
-                document.exitFullscreen();
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
             }
         }
 
-        document.addEventListener('fullscreenchange', () => {
-            elements.fullscreenBtn.textContent = document.fullscreenElement
-                ? '⛶ Exit Fullscreen'
-                : '⛶ Fullscreen';
-        });
+        function updateFullscreenButton() {
+            const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+            elements.fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶';
+            elements.fullscreenBtn.title = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+        }
 
-        // Sort button handlers
+        document.addEventListener('fullscreenchange', updateFullscreenButton);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+
+        // Sort buttons
         document.querySelectorAll('.sort-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 state.sort = btn.dataset.sort;
-
-                elements.timeSelect.style.display = state.sort === 'top' ? 'block' : 'none';
-
-                if (state.subreddit) {
-                    loadSubreddit(state.subreddit);
-                }
+                elements.timeSelect.style.display = state.sort === 'top' ? 'inline-block' : 'none';
+                if (state.subreddit) loadSubreddit(state.subreddit);
             });
         });
 
         elements.timeSelect.addEventListener('change', () => {
             state.time = elements.timeSelect.value;
-            if (state.subreddit) {
-                loadSubreddit(state.subreddit);
-            }
+            if (state.subreddit) loadSubreddit(state.subreddit);
         });
 
-        // Form submission
+        // Form
         elements.subredditForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const subreddit = elements.subredditInput.value.trim().replace(/^r\//, '');
-            if (subreddit) {
-                loadSubreddit(subreddit);
-            }
+            const sub = elements.subredditInput.value.trim().replace(/^r\//, '').replace(/\/$/, '');
+            if (sub) loadSubreddit(sub);
         });
 
         async function loadSubreddit(subreddit) {
@@ -506,119 +577,115 @@
             state.loading = true;
 
             elements.loadBtn.disabled = true;
-            elements.loadBtn.textContent = 'Loading...';
             elements.error.style.display = 'none';
-            elements.emptyState.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading posts...</p></div>';
+            elements.emptyState.style.display = 'flex';
+            elements.emptyState.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading...</p></div>';
+            elements.bottomBar.classList.add('hidden');
+            elements.counter.classList.add('hidden');
 
             try {
                 await fetchPosts();
-
                 if (state.slides.length === 0) {
-                    elements.emptyState.innerHTML = '<div class="empty-state"><h2>No media found</h2><p>This subreddit has no image or video posts</p></div>';
+                    elements.emptyState.innerHTML = '<div class="empty-state"><h2>No media found</h2><p>Try a different subreddit</p></div>';
                 } else {
                     elements.emptyState.style.display = 'none';
                     renderSlideshow();
                     showUI();
+
+                    // Show navigation hint briefly on first load
+                    if (state.firstLoad) {
+                        state.firstLoad = false;
+                        elements.navHint.classList.add('show');
+                        setTimeout(() => elements.navHint.classList.remove('show'), 2500);
+                    }
                 }
             } catch (err) {
                 console.error(err);
-                elements.error.textContent = err.message || 'Failed to load subreddit';
+                elements.error.textContent = err.message || 'Failed to load';
                 elements.error.style.display = 'block';
                 elements.emptyState.innerHTML = '<div class="empty-state"><h2>Error</h2><p>Could not load subreddit</p></div>';
             } finally {
                 state.loading = false;
                 elements.loadBtn.disabled = false;
-                elements.loadBtn.textContent = 'Load';
             }
         }
 
-        // JSONP helper for Reddit API (bypasses CORS)
         function jsonp(url) {
             return new Promise((resolve, reject) => {
-                const callbackName = 'jsonpCallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                const cb = 'cb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                 const script = document.createElement('script');
-
-                const timeout = setTimeout(() => {
-                    cleanup();
-                    reject(new Error('Request timeout'));
-                }, 15000);
+                const timeout = setTimeout(() => { cleanup(); reject(new Error('Timeout')); }, 15000);
 
                 function cleanup() {
                     clearTimeout(timeout);
-                    delete window[callbackName];
-                    if (script.parentNode) {
-                        script.parentNode.removeChild(script);
-                    }
+                    delete window[cb];
+                    script.remove();
                 }
 
-                window[callbackName] = (data) => {
-                    cleanup();
-                    resolve(data);
-                };
-
-                script.onerror = () => {
-                    cleanup();
-                    reject(new Error('Failed to load subreddit'));
-                };
-
-                script.src = url + (url.includes('?') ? '&' : '?') + 'jsonp=' + callbackName;
+                window[cb] = (data) => { cleanup(); resolve(data); };
+                script.onerror = () => { cleanup(); reject(new Error('Failed to load')); };
+                script.src = url + (url.includes('?') ? '&' : '?') + 'jsonp=' + cb;
                 document.head.appendChild(script);
             });
         }
 
         async function fetchPosts(loadMore = false) {
             let url = `https://www.reddit.com/r/${state.subreddit}/${state.sort}.json?limit=100&raw_json=1`;
-
-            if (state.sort === 'top') {
-                url += `&t=${state.time}`;
-            }
-
-            if (loadMore && state.after) {
-                url += `&after=${state.after}`;
-            }
+            if (state.sort === 'top') url += `&t=${state.time}`;
+            if (loadMore && state.after) url += `&after=${state.after}`;
 
             const data = await jsonp(url);
-
-            if (!data || !data.data) {
-                throw new Error('Subreddit not found or empty response');
-            }
+            if (!data?.data) throw new Error('Subreddit not found');
 
             state.after = data.data.after;
-
             const newSlides = [];
 
-            data.data.children.forEach(child => {
+            for (const child of data.data.children) {
                 const post = child.data;
-                const slides = getMediaSlides(post);
+                const slides = extractMedia(post);
                 newSlides.push(...slides);
-            });
+            }
 
             state.slides = loadMore ? [...state.slides, ...newSlides] : newSlides;
         }
 
-        function getMediaSlides(post) {
+        function extractMedia(post) {
             const slides = [];
-            const baseInfo = {
+            const base = {
                 postId: post.id,
                 title: post.title,
-                permalink: `https://reddit.com${post.permalink}`
+                permalink: `https://reddit.com${post.permalink}`,
+                author: post.author,
+                subreddit: post.subreddit
             };
 
-            // Reddit Gallery - extract ALL images
-            if (post.is_gallery && post.media_metadata && post.gallery_data) {
-                const galleryItems = post.gallery_data.items || [];
-                const totalImages = galleryItems.length;
+            // Gallery posts - check media_metadata
+            if (post.is_gallery && post.media_metadata) {
+                const items = post.gallery_data?.items || Object.keys(post.media_metadata).map(id => ({ media_id: id }));
+                const total = items.length;
 
-                galleryItems.forEach((item, index) => {
+                items.forEach((item, idx) => {
                     const media = post.media_metadata[item.media_id];
-                    if (media?.s?.u) {
+                    if (!media) return;
+
+                    // Get the best quality image
+                    let url = null;
+                    if (media.s?.u) {
+                        url = media.s.u;
+                    } else if (media.s?.gif) {
+                        url = media.s.gif;
+                    } else if (media.p && media.p.length > 0) {
+                        url = media.p[media.p.length - 1].u;
+                    }
+
+                    if (url) {
                         slides.push({
-                            ...baseInfo,
-                            type: 'image',
-                            url: media.s.u,
+                            ...base,
+                            type: media.e === 'AnimatedImage' ? 'gif' : 'image',
+                            url: url,
                             isGallery: true,
-                            galleryIndex: index + 1,
-                            galleryTotal: totalImages
+                            galleryIndex: idx + 1,
+                            galleryTotal: total
                         });
                     }
                 });
@@ -626,127 +693,123 @@
                 if (slides.length > 0) return slides;
             }
 
-            // Direct image URL
-            if (post.url && /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(post.url)) {
-                slides.push({
-                    ...baseInfo,
-                    type: 'image',
-                    url: post.url
-                });
-                return slides;
-            }
-
             // Reddit video
             if (post.is_video && post.media?.reddit_video?.fallback_url) {
                 slides.push({
-                    ...baseInfo,
+                    ...base,
                     type: 'video',
-                    url: post.media.reddit_video.fallback_url,
-                    hasAudio: post.media.reddit_video.has_audio
+                    url: post.media.reddit_video.fallback_url
                 });
                 return slides;
             }
 
-            // Preview image (fallback)
-            if (post.preview?.images?.[0]?.source?.url) {
-                slides.push({
-                    ...baseInfo,
-                    type: 'image',
-                    url: post.preview.images[0].source.url
-                });
+            // Direct image link
+            if (post.url && /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(post.url)) {
+                slides.push({ ...base, type: 'image', url: post.url });
                 return slides;
+            }
+
+            // i.redd.it images
+            if (post.url && post.url.includes('i.redd.it')) {
+                slides.push({ ...base, type: 'image', url: post.url });
+                return slides;
+            }
+
+            // Preview images as fallback
+            if (post.preview?.images?.[0]) {
+                const img = post.preview.images[0];
+                // Check for gif/video in preview
+                if (img.variants?.mp4?.source?.url) {
+                    slides.push({ ...base, type: 'video', url: img.variants.mp4.source.url });
+                    return slides;
+                }
+                if (img.variants?.gif?.source?.url) {
+                    slides.push({ ...base, type: 'image', url: img.variants.gif.source.url });
+                    return slides;
+                }
+                if (img.source?.url) {
+                    slides.push({ ...base, type: 'image', url: img.source.url });
+                    return slides;
+                }
             }
 
             return slides;
         }
 
         function renderSlideshow() {
-            const existingSlides = elements.slideshow.querySelectorAll('.slide');
-            existingSlides.forEach(slide => slide.remove());
-
+            elements.slideshow.querySelectorAll('.slide').forEach(s => s.remove());
             updateSlides();
-            updateProgress();
-            updateCounter();
-            updateTitle();
+            updateUI();
         }
 
         function updateSlides() {
             const container = elements.slideshow;
-            const existingSlides = container.querySelectorAll('.slide');
-            existingSlides.forEach(slide => slide.remove());
+            container.querySelectorAll('.slide').forEach(s => s.remove());
 
-            const indices = [
-                state.currentIndex - 1,
-                state.currentIndex,
-                state.currentIndex + 1
-            ];
+            [-1, 0, 1].forEach(offset => {
+                const idx = state.currentIndex + offset;
+                if (idx < 0 || idx >= state.slides.length) return;
 
-            indices.forEach((index, i) => {
-                if (index >= 0 && index < state.slides.length) {
-                    const slideData = state.slides[index];
-                    const slide = document.createElement('div');
-                    slide.className = 'slide';
+                const data = state.slides[idx];
+                const slide = document.createElement('div');
+                slide.className = 'slide';
+                if (offset === -1) slide.classList.add('prev');
+                else if (offset === 0) slide.classList.add('active');
+                else slide.classList.add('next');
 
-                    if (i === 0) slide.classList.add('prev');
-                    else if (i === 1) slide.classList.add('active');
-                    else if (i === 2) slide.classList.add('next');
-
-                    if (slideData.type === 'image') {
-                        const img = document.createElement('img');
-                        img.src = slideData.url;
-                        img.alt = slideData.title;
-                        img.loading = 'lazy';
-                        slide.appendChild(img);
-                    } else if (slideData.type === 'video') {
-                        const video = document.createElement('video');
-                        video.src = slideData.url;
-                        video.controls = true;
-                        video.loop = true;
-                        video.playsInline = true;
-                        video.muted = true;
-                        if (i === 1) video.autoplay = true;
-                        slide.appendChild(video);
-                    }
-
-                    container.appendChild(slide);
+                if (data.type === 'video') {
+                    const video = document.createElement('video');
+                    video.src = data.url;
+                    video.controls = true;
+                    video.loop = true;
+                    video.playsInline = true;
+                    video.muted = true;
+                    video.preload = 'auto';
+                    if (offset === 0) video.autoplay = true;
+                    slide.appendChild(video);
+                } else {
+                    const img = document.createElement('img');
+                    img.src = data.url;
+                    img.alt = data.title;
+                    img.draggable = false;
+                    slide.appendChild(img);
                 }
+
+                container.appendChild(slide);
             });
         }
 
-        function updateProgress() {
-            const maxDots = 50;
-            const totalSlides = state.slides.length;
+        function updateUI() {
+            const data = state.slides[state.currentIndex];
+            if (!data) return;
 
-            if (totalSlides <= maxDots) {
-                elements.progress.innerHTML = state.slides.map((_, i) => {
-                    let className = 'progress-bar';
-                    if (i < state.currentIndex) className += ' viewed';
-                    else if (i === state.currentIndex) className += ' current';
-                    return `<div class="${className}"></div>`;
-                }).join('');
-            } else {
-                elements.progress.innerHTML = '';
-            }
-
-            elements.progress.classList.toggle('hidden', !state.uiVisible);
-        }
-
-        function updateCounter() {
+            // Counter
             elements.counter.textContent = `${state.currentIndex + 1} / ${state.slides.length}`;
-        }
+            elements.counter.classList.toggle('hidden', !state.uiVisible);
 
-        function updateTitle() {
-            const slideData = state.slides[state.currentIndex];
-            if (slideData) {
-                let html = `<a href="${slideData.permalink}" target="_blank" rel="noopener">${escapeHtml(slideData.title)}</a>`;
+            // Title
+            elements.postTitle.innerHTML = `<a href="${data.permalink}" target="_blank">${escapeHtml(data.title)}</a>`;
 
-                if (slideData.isGallery) {
-                    html += `<span class="gallery-indicator">${slideData.galleryIndex}/${slideData.galleryTotal}</span>`;
-                }
-
-                elements.postTitle.innerHTML = html;
-                elements.postTitle.classList.toggle('hidden', !state.uiVisible);
+            // Meta info
+            let meta = `r/${data.subreddit}`;
+            if (data.isGallery) {
+                meta += ` <span class="gallery-indicator">📷 ${data.galleryIndex}/${data.galleryTotal}</span>`;
             }
+            elements.postMeta.innerHTML = meta;
+
+            // Gallery dots
+            if (data.isGallery && data.galleryTotal <= 20) {
+                let dots = '';
+                for (let i = 1; i <= data.galleryTotal; i++) {
+                    dots += `<div class="gallery-dot${i === data.galleryIndex ? ' active' : ''}"></div>`;
+                }
+                elements.galleryDots.innerHTML = dots;
+                elements.galleryDots.style.display = 'flex';
+            } else {
+                elements.galleryDots.style.display = 'none';
+            }
+
+            elements.bottomBar.classList.toggle('hidden', !state.uiVisible);
         }
 
         function escapeHtml(text) {
@@ -755,30 +818,29 @@
             return div.innerHTML;
         }
 
-        function navigate(direction) {
-            const newIndex = state.currentIndex + direction;
+        function navigate(dir) {
+            const newIdx = state.currentIndex + dir;
+            if (newIdx < 0 || newIdx >= state.slides.length) return;
 
-            if (newIndex < 0 || newIndex >= state.slides.length) {
-                return;
-            }
+            // Show swipe feedback
+            const feedback = dir < 0 ? elements.swipeFeedbackLeft : elements.swipeFeedbackRight;
+            feedback.classList.add('show');
+            setTimeout(() => feedback.classList.remove('show'), 150);
 
-            const currentVideo = elements.slideshow.querySelector('.slide.active video');
-            if (currentVideo) {
-                currentVideo.pause();
-            }
+            // Pause video
+            const video = elements.slideshow.querySelector('.slide.active video');
+            if (video) video.pause();
 
-            state.currentIndex = newIndex;
+            state.currentIndex = newIdx;
             updateSlides();
-            updateProgress();
-            updateCounter();
-            updateTitle();
+            updateUI();
 
-            if (state.slides.length - state.currentIndex < 10 && state.after && !state.loading) {
+            // Preload more
+            if (state.slides.length - state.currentIndex < 15 && state.after && !state.loading) {
                 state.loading = true;
                 fetchPosts(true).then(() => {
                     state.loading = false;
-                    updateProgress();
-                    updateCounter();
+                    updateUI();
                 });
             }
         }
@@ -786,30 +848,25 @@
         function toggleUI() {
             state.uiVisible = !state.uiVisible;
             elements.header.classList.toggle('hidden', !state.uiVisible);
-            elements.postTitle.classList.toggle('hidden', !state.uiVisible);
-            elements.progress.classList.toggle('hidden', !state.uiVisible);
+            elements.bottomBar.classList.toggle('hidden', !state.uiVisible);
+            elements.counter.classList.toggle('hidden', !state.uiVisible);
         }
 
         function showUI() {
             state.uiVisible = true;
             elements.header.classList.remove('hidden');
-            elements.postTitle.classList.remove('hidden');
-            elements.progress.classList.remove('hidden');
+            elements.bottomBar.classList.remove('hidden');
+            elements.counter.classList.remove('hidden');
         }
 
-        // Event Listeners
-        elements.prevBtn.addEventListener('click', () => navigate(-1));
-        elements.nextBtn.addEventListener('click', () => navigate(1));
-
-        // Touch zones
+        // Event listeners
         elements.touchLeft.addEventListener('click', () => navigate(-1));
         elements.touchRight.addEventListener('click', () => navigate(1));
         elements.touchCenter.addEventListener('click', toggleUI);
 
-        // Keyboard navigation
+        // Keyboard
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT') return;
-
             switch (e.key) {
                 case 'ArrowLeft':
                 case 'ArrowUp':
@@ -831,31 +888,27 @@
             }
         });
 
-        // Swipe gestures
-        let touchStartX = 0;
-        let touchStartY = 0;
+        // Swipe
+        let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
 
         elements.slideshow.addEventListener('touchstart', (e) => {
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
         }, { passive: true });
 
         elements.slideshow.addEventListener('touchend', (e) => {
-            const touchEndX = e.changedTouches[0].clientX;
-            const touchEndY = e.changedTouches[0].clientY;
-            const deltaX = touchEndX - touchStartX;
-            const deltaY = touchEndY - touchStartY;
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            const dy = e.changedTouches[0].clientY - touchStartY;
+            const dt = Date.now() - touchStartTime;
 
-            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-                if (deltaX > 0) {
-                    navigate(-1);
-                } else {
-                    navigate(1);
-                }
+            // Quick swipe or long drag
+            if (Math.abs(dx) > Math.abs(dy) && (Math.abs(dx) > 50 || (Math.abs(dx) > 30 && dt < 300))) {
+                navigate(dx > 0 ? -1 : 1);
             }
         }, { passive: true });
 
-        // Focus input on load
+        // Focus input
         elements.subredditInput.focus();
     </script>
 </body>
