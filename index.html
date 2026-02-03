@@ -668,14 +668,14 @@
                     const media = post.media_metadata[item.media_id];
                     if (!media) return;
 
-                    // Get the best quality image
+                    // Get the best quality image (decode HTML entities in URLs)
                     let url = null;
                     if (media.s?.u) {
-                        url = media.s.u;
+                        url = decodeHtmlEntities(media.s.u);
                     } else if (media.s?.gif) {
-                        url = media.s.gif;
+                        url = decodeHtmlEntities(media.s.gif);
                     } else if (media.p && media.p.length > 0) {
-                        url = media.p[media.p.length - 1].u;
+                        url = decodeHtmlEntities(media.p[media.p.length - 1].u);
                     }
 
                     if (url) {
@@ -715,20 +715,20 @@
                 return slides;
             }
 
-            // Preview images as fallback
+            // Preview images as fallback (decode HTML entities in URLs)
             if (post.preview?.images?.[0]) {
                 const img = post.preview.images[0];
                 // Check for gif/video in preview
                 if (img.variants?.mp4?.source?.url) {
-                    slides.push({ ...base, type: 'video', url: img.variants.mp4.source.url });
+                    slides.push({ ...base, type: 'video', url: decodeHtmlEntities(img.variants.mp4.source.url) });
                     return slides;
                 }
                 if (img.variants?.gif?.source?.url) {
-                    slides.push({ ...base, type: 'image', url: img.variants.gif.source.url });
+                    slides.push({ ...base, type: 'image', url: decodeHtmlEntities(img.variants.gif.source.url) });
                     return slides;
                 }
                 if (img.source?.url) {
-                    slides.push({ ...base, type: 'image', url: img.source.url });
+                    slides.push({ ...base, type: 'image', url: decodeHtmlEntities(img.source.url) });
                     return slides;
                 }
             }
@@ -816,6 +816,13 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function decodeHtmlEntities(str) {
+            if (!str) return str;
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = str;
+            return textarea.value;
         }
 
         function navigate(dir) {
