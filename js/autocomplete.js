@@ -25,8 +25,8 @@ const AUTOCOMPLETE_CONFIG = {
     /** Maximum results to show */
     MAX_RESULTS: 8,
 
-    /** API endpoint for subreddit search */
-    SEARCH_URL: 'https://www.reddit.com/subreddits/search.json'
+    /** API endpoint for subreddit autocomplete (supports JSONP) */
+    SEARCH_URL: 'https://www.reddit.com/api/subreddit_autocomplete_v2.json'
 };
 
 /**
@@ -134,21 +134,24 @@ async function searchSubreddits(query) {
         return [];
     }
 
-    const url = `${AUTOCOMPLETE_CONFIG.SEARCH_URL}?q=${encodeURIComponent(query)}&limit=${AUTOCOMPLETE_CONFIG.MAX_RESULTS}&include_over_18=true&raw_json=1`;
+    const url = `${AUTOCOMPLETE_CONFIG.SEARCH_URL}?query=${encodeURIComponent(query)}&limit=${AUTOCOMPLETE_CONFIG.MAX_RESULTS}&include_over_18=true&raw_json=1&include_profiles=false`;
 
     try {
         const data = await jsonp(url);
 
+        // Handle the autocomplete_v2 response format
         if (!data?.data?.children) {
             return [];
         }
 
-        return data.data.children.map(child => ({
-            name: child.data.display_name,
-            subscribers: child.data.subscribers,
-            icon: child.data.icon_img || child.data.community_icon || null,
-            nsfw: child.data.over18
-        }));
+        return data.data.children
+            .filter(child => child.kind === 't5') // t5 = subreddit
+            .map(child => ({
+                name: child.data.display_name,
+                subscribers: child.data.subscribers,
+                icon: child.data.icon_img || child.data.community_icon?.split('?')[0] || null,
+                nsfw: child.data.over18
+            }));
     } catch (error) {
         console.warn('Subreddit search failed:', error);
         return [];
