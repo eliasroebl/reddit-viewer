@@ -329,12 +329,20 @@
             color: #ff6b6b;
         }
 
-        /* Touch zones */
+        /* Touch zones - only for desktop click, not mobile */
         .touch-zone {
             position: fixed;
             top: 0;
             bottom: 0;
             z-index: 55;
+            pointer-events: none;
+        }
+
+        /* Enable touch zones only on non-touch devices */
+        @media (hover: hover) and (pointer: fine) {
+            .touch-zone {
+                pointer-events: auto;
+            }
         }
 
         .touch-zone.left {
@@ -541,6 +549,19 @@
             const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
             elements.fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶';
             elements.fullscreenBtn.title = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+
+            // Auto-hide UI when entering fullscreen, show when exiting
+            if (isFullscreen) {
+                state.uiVisible = false;
+                elements.header.classList.add('hidden');
+                elements.bottomBar.classList.add('hidden');
+                elements.counter.classList.add('hidden');
+            } else {
+                state.uiVisible = true;
+                elements.header.classList.remove('hidden');
+                elements.bottomBar.classList.remove('hidden');
+                elements.counter.classList.remove('hidden');
+            }
         }
 
         document.addEventListener('fullscreenchange', updateFullscreenButton);
@@ -895,23 +916,32 @@
             }
         });
 
-        // Swipe
+        // Swipe and tap handling for mobile
         let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
 
-        elements.slideshow.addEventListener('touchstart', (e) => {
+        document.addEventListener('touchstart', (e) => {
+            // Ignore touches on form elements
+            if (e.target.closest('.header') || e.target.closest('.bottom-bar')) return;
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
             touchStartTime = Date.now();
         }, { passive: true });
 
-        elements.slideshow.addEventListener('touchend', (e) => {
+        document.addEventListener('touchend', (e) => {
+            // Ignore touches on form elements
+            if (e.target.closest('.header') || e.target.closest('.bottom-bar')) return;
+
             const dx = e.changedTouches[0].clientX - touchStartX;
             const dy = e.changedTouches[0].clientY - touchStartY;
             const dt = Date.now() - touchStartTime;
 
-            // Quick swipe or long drag
-            if (Math.abs(dx) > Math.abs(dy) && (Math.abs(dx) > 50 || (Math.abs(dx) > 30 && dt < 300))) {
+            // Swipe detection
+            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
                 navigate(dx > 0 ? -1 : 1);
+            }
+            // Tap detection (small movement, quick tap)
+            else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
+                toggleUI();
             }
         }, { passive: true });
 
