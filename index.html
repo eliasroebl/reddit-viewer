@@ -426,6 +426,131 @@
         .swipe-feedback.left { left: 20px; }
         .swipe-feedback.right { right: 20px; }
         .swipe-feedback.show { opacity: 1; }
+
+        /* Zoom & Pan for images */
+        .slide img.zoomed {
+            max-width: none;
+            max-height: none;
+            cursor: grab;
+            transition: none;
+        }
+
+        .slide img.zoomed.dragging {
+            cursor: grabbing;
+        }
+
+        .zoom-indicator {
+            position: fixed;
+            bottom: 50%;
+            left: 50%;
+            transform: translate(-50%, 50%);
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+            z-index: 300;
+        }
+
+        .zoom-indicator.show {
+            opacity: 1;
+        }
+
+        /* NSFW Toggle */
+        .nsfw-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.6);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .nsfw-toggle.active {
+            background: rgba(255,68,68,0.3);
+            color: #ff6b6b;
+        }
+
+        .nsfw-toggle .toggle-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            transition: background 0.2s;
+        }
+
+        .nsfw-toggle.active .toggle-dot {
+            background: #ff6b6b;
+        }
+
+        /* Autoplay controls */
+        .autoplay-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+        }
+
+        .autoplay-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .autoplay-btn:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .autoplay-btn.playing {
+            background: #ff4500;
+            color: #fff;
+        }
+
+        .speed-select {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .speed-select option {
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        /* External media badge */
+        .source-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            margin-left: 8px;
+        }
     </style>
 </head>
 <body>
@@ -435,7 +560,7 @@
                 type="text"
                 class="subreddit-input"
                 id="subredditInput"
-                placeholder="Subreddit name..."
+                placeholder="pics+earthporn or subreddit..."
                 autocomplete="off"
                 autocapitalize="none"
                 spellcheck="false"
@@ -454,6 +579,20 @@
                 <option value="year">This Year</option>
                 <option value="all">All Time</option>
             </select>
+            <button class="nsfw-toggle" id="nsfwToggle" title="Toggle NSFW content">
+                <span class="toggle-dot"></span>
+                <span>NSFW</span>
+            </button>
+            <div class="autoplay-controls">
+                <select class="speed-select" id="speedSelect" title="Autoplay speed">
+                    <option value="2000">2s</option>
+                    <option value="3000" selected>3s</option>
+                    <option value="5000">5s</option>
+                    <option value="8000">8s</option>
+                    <option value="10000">10s</option>
+                </select>
+                <button class="autoplay-btn" id="autoplayBtn" title="Autoplay">▶</button>
+            </div>
         </div>
         <div class="error" id="error" style="display: none;"></div>
     </header>
@@ -480,6 +619,7 @@
 
     <div class="swipe-feedback left" id="swipeFeedbackLeft">‹</div>
     <div class="swipe-feedback right" id="swipeFeedbackRight">›</div>
+    <div class="zoom-indicator" id="zoomIndicator">2x Zoom</div>
 
     <!-- Touch zones for mobile -->
     <div class="touch-zone left" id="touchLeft"></div>
@@ -496,7 +636,23 @@
             loading: false,
             after: null,
             uiVisible: true,
-            firstLoad: true
+            firstLoad: true,
+            // NSFW filter
+            showNSFW: false,
+            // Autoplay
+            autoplay: false,
+            autoplayInterval: null,
+            autoplaySpeed: 3000,
+            // Zoom & Pan
+            isZoomed: false,
+            zoomScale: 2,
+            panX: 0,
+            panY: 0,
+            isPanning: false,
+            panStartX: 0,
+            panStartY: 0,
+            // Preload cache
+            preloadedImages: new Set()
         };
 
         const elements = {
@@ -519,7 +675,11 @@
             touchCenter: document.getElementById('touchCenter'),
             touchRight: document.getElementById('touchRight'),
             swipeFeedbackLeft: document.getElementById('swipeFeedbackLeft'),
-            swipeFeedbackRight: document.getElementById('swipeFeedbackRight')
+            swipeFeedbackRight: document.getElementById('swipeFeedbackRight'),
+            nsfwToggle: document.getElementById('nsfwToggle'),
+            autoplayBtn: document.getElementById('autoplayBtn'),
+            speedSelect: document.getElementById('speedSelect'),
+            zoomIndicator: document.getElementById('zoomIndicator')
         };
 
         // Fullscreen
@@ -567,6 +727,57 @@
         document.addEventListener('fullscreenchange', updateFullscreenButton);
         document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
 
+        // NSFW Toggle
+        elements.nsfwToggle.addEventListener('click', () => {
+            state.showNSFW = !state.showNSFW;
+            elements.nsfwToggle.classList.toggle('active', state.showNSFW);
+            if (state.subreddit) loadSubreddit(state.subreddit);
+        });
+
+        // Autoplay controls
+        elements.autoplayBtn.addEventListener('click', toggleAutoplay);
+        elements.speedSelect.addEventListener('change', () => {
+            state.autoplaySpeed = parseInt(elements.speedSelect.value);
+            if (state.autoplay) {
+                stopAutoplay();
+                startAutoplay();
+            }
+        });
+
+        function toggleAutoplay() {
+            if (state.autoplay) {
+                stopAutoplay();
+            } else {
+                startAutoplay();
+            }
+        }
+
+        function startAutoplay() {
+            if (state.slides.length === 0) return;
+            state.autoplay = true;
+            elements.autoplayBtn.classList.add('playing');
+            elements.autoplayBtn.textContent = '⏸';
+            elements.autoplayBtn.title = 'Pause';
+            state.autoplayInterval = setInterval(() => {
+                if (state.currentIndex < state.slides.length - 1) {
+                    navigate(1);
+                } else {
+                    stopAutoplay();
+                }
+            }, state.autoplaySpeed);
+        }
+
+        function stopAutoplay() {
+            state.autoplay = false;
+            elements.autoplayBtn.classList.remove('playing');
+            elements.autoplayBtn.textContent = '▶';
+            elements.autoplayBtn.title = 'Autoplay';
+            if (state.autoplayInterval) {
+                clearInterval(state.autoplayInterval);
+                state.autoplayInterval = null;
+            }
+        }
+
         // Sort buttons
         document.querySelectorAll('.sort-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -596,6 +807,11 @@
             state.currentIndex = 0;
             state.after = null;
             state.loading = true;
+            state.preloadedImages.clear();
+
+            // Stop autoplay and reset zoom when loading new content
+            stopAutoplay();
+            resetZoom();
 
             elements.loadBtn.disabled = true;
             elements.error.style.display = 'none';
@@ -672,12 +888,20 @@
 
         function extractMedia(post) {
             const slides = [];
+
+            // NSFW filtering
+            if (post.over_18 && !state.showNSFW) {
+                return slides;
+            }
+
             const base = {
                 postId: post.id,
                 title: post.title,
                 permalink: `https://reddit.com${post.permalink}`,
                 author: post.author,
-                subreddit: post.subreddit
+                subreddit: post.subreddit,
+                isNSFW: post.over_18,
+                source: 'reddit'
             };
 
             // Gallery posts - check media_metadata
@@ -736,6 +960,13 @@
                 return slides;
             }
 
+            // External media support
+            const externalMedia = extractExternalMedia(post.url, base);
+            if (externalMedia) {
+                slides.push(externalMedia);
+                return slides;
+            }
+
             // Preview images as fallback (decode HTML entities in URLs)
             if (post.preview?.images?.[0]) {
                 const img = post.preview.images[0];
@@ -755,6 +986,111 @@
             }
 
             return slides;
+        }
+
+        // Extract media from external sources (Imgur, Gfycat, Giphy, Redgifs)
+        function extractExternalMedia(url, base) {
+            if (!url) return null;
+
+            // Imgur direct images
+            const imgurDirectMatch = url.match(/imgur\.com\/(\w+)(?:\.(jpg|jpeg|png|gif|gifv|mp4))?/i);
+            if (imgurDirectMatch) {
+                const imgurId = imgurDirectMatch[1];
+                const ext = imgurDirectMatch[2]?.toLowerCase();
+
+                // Skip album/gallery links (they have 'a/' or 'gallery/' in path)
+                if (url.includes('/a/') || url.includes('/gallery/')) {
+                    // For albums, use the first image via i.imgur.com
+                    return {
+                        ...base,
+                        type: 'image',
+                        url: `https://i.imgur.com/${imgurId}.jpg`,
+                        source: 'imgur'
+                    };
+                }
+
+                if (ext === 'gifv' || ext === 'mp4') {
+                    return {
+                        ...base,
+                        type: 'video',
+                        url: `https://i.imgur.com/${imgurId}.mp4`,
+                        source: 'imgur'
+                    };
+                }
+                return {
+                    ...base,
+                    type: 'image',
+                    url: `https://i.imgur.com/${imgurId}.jpg`,
+                    source: 'imgur'
+                };
+            }
+
+            // i.imgur.com direct links
+            if (url.includes('i.imgur.com')) {
+                const gifvMatch = url.match(/i\.imgur\.com\/(\w+)\.gifv/i);
+                if (gifvMatch) {
+                    return {
+                        ...base,
+                        type: 'video',
+                        url: `https://i.imgur.com/${gifvMatch[1]}.mp4`,
+                        source: 'imgur'
+                    };
+                }
+                return {
+                    ...base,
+                    type: 'image',
+                    url: url.replace('.gifv', '.mp4'),
+                    source: 'imgur'
+                };
+            }
+
+            // Gfycat
+            const gfycatMatch = url.match(/gfycat\.com\/(?:(?:gifs\/detail|ifr|watch)\/)?(\w+)/i);
+            if (gfycatMatch) {
+                const gfyId = gfycatMatch[1].split('-')[0]; // Remove any suffix
+                return {
+                    ...base,
+                    type: 'video',
+                    url: `https://thumbs.gfycat.com/${gfyId}-mobile.mp4`,
+                    source: 'gfycat'
+                };
+            }
+
+            // Redgifs
+            const redgifsMatch = url.match(/redgifs\.com\/(?:watch|ifr)\/(\w+)/i);
+            if (redgifsMatch) {
+                const redgifId = redgifsMatch[1].toLowerCase();
+                return {
+                    ...base,
+                    type: 'video',
+                    url: `https://thumbs44.redgifs.com/${redgifId}.mp4`,
+                    source: 'redgifs'
+                };
+            }
+
+            // Giphy
+            const giphyMatch = url.match(/giphy\.com\/(?:gifs|media)\/(?:.*-)?(\w+)/i);
+            if (giphyMatch) {
+                const giphyId = giphyMatch[1];
+                return {
+                    ...base,
+                    type: 'image',
+                    url: `https://media.giphy.com/media/${giphyId}/giphy.gif`,
+                    source: 'giphy'
+                };
+            }
+
+            // i.giphy.com direct
+            if (url.includes('i.giphy.com') || url.includes('media.giphy.com')) {
+                return {
+                    ...base,
+                    type: 'image',
+                    url: url,
+                    source: 'giphy'
+                };
+            }
+
+            return null;
         }
 
         function renderSlideshow() {
@@ -816,6 +1152,10 @@
             if (data.isGallery) {
                 meta += ` <span class="gallery-indicator">📷 ${data.galleryIndex}/${data.galleryTotal}</span>`;
             }
+            // Show source badge for external media
+            if (data.source && data.source !== 'reddit') {
+                meta += ` <span class="source-badge">${data.source}</span>`;
+            }
             elements.postMeta.innerHTML = meta;
 
             // Gallery dots
@@ -850,6 +1190,9 @@
             const newIdx = state.currentIndex + dir;
             if (newIdx < 0 || newIdx >= state.slides.length) return;
 
+            // Reset zoom when navigating
+            resetZoom();
+
             // Show swipe feedback
             const feedback = dir < 0 ? elements.swipeFeedbackLeft : elements.swipeFeedbackRight;
             feedback.classList.add('show');
@@ -863,7 +1206,10 @@
             updateSlides();
             updateUI();
 
-            // Preload more
+            // Preload images ahead (5 images)
+            preloadImages();
+
+            // Preload more posts from API
             if (state.slides.length - state.currentIndex < 15 && state.after && !state.loading) {
                 state.loading = true;
                 fetchPosts(true).then(() => {
@@ -871,6 +1217,64 @@
                     updateUI();
                 });
             }
+        }
+
+        // Image preloading - preload 5 images ahead
+        function preloadImages() {
+            for (let i = 1; i <= 5; i++) {
+                const idx = state.currentIndex + i;
+                if (idx >= state.slides.length) break;
+
+                const data = state.slides[idx];
+                if (data.type === 'image' && !state.preloadedImages.has(data.url)) {
+                    const img = new Image();
+                    img.src = data.url;
+                    state.preloadedImages.add(data.url);
+                }
+            }
+        }
+
+        // Zoom & Pan functions
+        function resetZoom() {
+            state.isZoomed = false;
+            state.panX = 0;
+            state.panY = 0;
+            state.isPanning = false;
+
+            const img = elements.slideshow.querySelector('.slide.active img');
+            if (img) {
+                img.classList.remove('zoomed', 'dragging');
+                img.style.transform = '';
+            }
+        }
+
+        function toggleZoom() {
+            const img = elements.slideshow.querySelector('.slide.active img');
+            if (!img) return;
+
+            state.isZoomed = !state.isZoomed;
+
+            if (state.isZoomed) {
+                state.panX = 0;
+                state.panY = 0;
+                img.classList.add('zoomed');
+                img.style.transform = `scale(${state.zoomScale}) translate(0px, 0px)`;
+
+                // Show zoom indicator
+                elements.zoomIndicator.textContent = `${state.zoomScale}x Zoom`;
+                elements.zoomIndicator.classList.add('show');
+                setTimeout(() => elements.zoomIndicator.classList.remove('show'), 800);
+            } else {
+                img.classList.remove('zoomed');
+                img.style.transform = '';
+                state.panX = 0;
+                state.panY = 0;
+            }
+        }
+
+        function updatePan(img) {
+            if (!state.isZoomed || !img) return;
+            img.style.transform = `scale(${state.zoomScale}) translate(${state.panX}px, ${state.panY}px)`;
         }
 
         function toggleUI() {
@@ -894,30 +1298,44 @@
 
         // Keyboard
         document.addEventListener('keydown', (e) => {
-            if (e.target.tagName === 'INPUT') return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
             switch (e.key) {
                 case 'ArrowLeft':
                 case 'ArrowUp':
-                    navigate(-1);
+                    if (!state.isZoomed) navigate(-1);
                     break;
                 case 'ArrowRight':
                 case 'ArrowDown':
                 case ' ':
-                    navigate(1);
+                    if (!state.isZoomed) navigate(1);
                     e.preventDefault();
                     break;
                 case 'Escape':
-                    showUI();
+                    if (state.isZoomed) {
+                        resetZoom();
+                    } else {
+                        showUI();
+                    }
                     break;
                 case 'f':
                 case 'F':
                     toggleFullscreen();
                     break;
+                case 'z':
+                case 'Z':
+                    toggleZoom();
+                    break;
+                case 'p':
+                case 'P':
+                    toggleAutoplay();
+                    break;
             }
         });
 
-        // Swipe and tap handling for mobile
+        // Swipe, tap, double-tap, and pan handling
         let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+        let lastTapTime = 0;
+        let isPanningTouch = false;
 
         document.addEventListener('touchstart', (e) => {
             // Ignore touches on form elements
@@ -925,6 +1343,33 @@
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
             touchStartTime = Date.now();
+
+            // Start panning if zoomed
+            if (state.isZoomed) {
+                isPanningTouch = true;
+                state.panStartX = touchStartX;
+                state.panStartY = touchStartY;
+                const img = elements.slideshow.querySelector('.slide.active img');
+                if (img) img.classList.add('dragging');
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!state.isZoomed || !isPanningTouch) return;
+            if (e.target.closest('.header') || e.target.closest('.bottom-bar')) return;
+
+            const currentX = e.touches[0].clientX;
+            const currentY = e.touches[0].clientY;
+            const dx = (currentX - state.panStartX) / state.zoomScale;
+            const dy = (currentY - state.panStartY) / state.zoomScale;
+
+            state.panX += dx;
+            state.panY += dy;
+            state.panStartX = currentX;
+            state.panStartY = currentY;
+
+            const img = elements.slideshow.querySelector('.slide.active img');
+            updatePan(img);
         }, { passive: true });
 
         document.addEventListener('touchend', (e) => {
@@ -935,15 +1380,94 @@
             const dy = e.changedTouches[0].clientY - touchStartY;
             const dt = Date.now() - touchStartTime;
 
-            // Swipe detection
+            // End panning
+            if (isPanningTouch) {
+                isPanningTouch = false;
+                const img = elements.slideshow.querySelector('.slide.active img');
+                if (img) img.classList.remove('dragging');
+            }
+
+            // If zoomed, don't process swipes/taps as navigation (except double-tap to zoom out)
+            if (state.isZoomed) {
+                // Double-tap to zoom out
+                const timeSinceLastTap = Date.now() - lastTapTime;
+                if (timeSinceLastTap < 300 && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+                    resetZoom();
+                    lastTapTime = 0;
+                    return;
+                }
+                lastTapTime = Date.now();
+                return;
+            }
+
+            // Double-tap detection for zoom
+            const timeSinceLastTap = Date.now() - lastTapTime;
+            if (timeSinceLastTap < 300 && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+                toggleZoom();
+                lastTapTime = 0;
+                return;
+            }
+            lastTapTime = Date.now();
+
+            // Swipe detection (only when not zoomed)
             if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
                 navigate(dx > 0 ? -1 : 1);
             }
-            // Tap detection (small movement, quick tap)
+            // Single tap detection (after double-tap window expires)
             else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
-                toggleUI();
+                // Delay toggle UI to allow for double-tap detection
+                setTimeout(() => {
+                    if (Date.now() - lastTapTime > 250) {
+                        toggleUI();
+                    }
+                }, 300);
             }
         }, { passive: true });
+
+        // Mouse drag for panning (desktop)
+        let isMouseDragging = false;
+        let mouseStartX = 0, mouseStartY = 0;
+
+        elements.slideshow.addEventListener('mousedown', (e) => {
+            if (!state.isZoomed) return;
+            if (e.target.tagName !== 'IMG') return;
+
+            isMouseDragging = true;
+            mouseStartX = e.clientX;
+            mouseStartY = e.clientY;
+            e.target.classList.add('dragging');
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isMouseDragging || !state.isZoomed) return;
+
+            const dx = (e.clientX - mouseStartX) / state.zoomScale;
+            const dy = (e.clientY - mouseStartY) / state.zoomScale;
+
+            state.panX += dx;
+            state.panY += dy;
+            mouseStartX = e.clientX;
+            mouseStartY = e.clientY;
+
+            const img = elements.slideshow.querySelector('.slide.active img');
+            updatePan(img);
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isMouseDragging) {
+                isMouseDragging = false;
+                const img = elements.slideshow.querySelector('.slide.active img');
+                if (img) img.classList.remove('dragging');
+            }
+        });
+
+        // Double-click to zoom (desktop)
+        elements.slideshow.addEventListener('dblclick', (e) => {
+            if (e.target.tagName === 'IMG') {
+                toggleZoom();
+            }
+        });
 
         // Focus input
         elements.subredditInput.focus();
