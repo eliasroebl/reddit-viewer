@@ -3,1474 +3,212 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="A media-focused Reddit browser with slideshow viewing, gallery support, and external media integration">
+
+    <!-- PWA Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0a0a0a">
+    <meta name="mobile-web-app-capable" content="yes">
+
     <title>Reddit Viewer</title>
-    <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Reddit Viewer&quot;,&quot;short_name&quot;:&quot;RedditView&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%230a0a0a&quot;,&quot;theme_color&quot;:&quot;%230a0a0a&quot;}">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
 
-        html, body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #fff;
-            overflow: hidden;
-            height: 100%;
-            width: 100%;
-            position: fixed;
-            top: 0;
-            left: 0;
-        }
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
 
-        /* Header / Controls */
-        .header {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 100;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 70%, rgba(0,0,0,0) 100%);
-            padding: 12px 16px 20px;
-            padding-top: max(12px, env(safe-area-inset-top));
-            transition: transform 0.3s ease, opacity 0.3s ease;
-        }
-
-        .header.hidden {
-            transform: translateY(-100%);
-            opacity: 0;
-        }
-
-        .top-row {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
-            align-items: center;
-        }
-
-        .subreddit-input {
-            flex: 1;
-            padding: 10px 16px;
-            border: none;
-            border-radius: 20px;
-            background: rgba(255,255,255,0.12);
-            color: #fff;
-            font-size: 16px;
-            outline: none;
-            min-width: 0;
-        }
-
-        .subreddit-input::placeholder {
-            color: rgba(255,255,255,0.4);
-        }
-
-        .subreddit-input:focus {
-            background: rgba(255,255,255,0.18);
-        }
-
-        .icon-btn {
-            width: 40px;
-            height: 40px;
-            border: none;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.12);
-            color: #fff;
-            font-size: 18px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: background 0.2s;
-        }
-
-        .icon-btn:hover {
-            background: rgba(255,255,255,0.2);
-        }
-
-        .icon-btn:active {
-            background: rgba(255,255,255,0.25);
-        }
-
-        .icon-btn.primary {
-            background: #ff4500;
-        }
-
-        .icon-btn.primary:hover {
-            background: #ff5722;
-        }
-
-        .sort-row {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        .sort-btn {
-            padding: 6px 14px;
-            border: none;
-            border-radius: 14px;
-            background: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.6);
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .sort-btn.active {
-            background: #ff4500;
-            color: #fff;
-        }
-
-        .time-select {
-            padding: 6px 10px;
-            border: none;
-            border-radius: 14px;
-            background: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.8);
-            font-size: 13px;
-            cursor: pointer;
-            outline: none;
-        }
-
-        .time-select option {
-            background: #1a1a1a;
-            color: #fff;
-        }
-
-        /* Slideshow Container */
-        .slideshow-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #0a0a0a;
-        }
-
-        .slide {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.25s ease, transform 0.25s ease;
-            pointer-events: none;
-            will-change: transform, opacity;
-        }
-
-        .slide.active {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .slide.prev {
-            transform: translateX(-30%);
-            opacity: 0;
-        }
-
-        .slide.next {
-            transform: translateX(30%);
-            opacity: 0;
-        }
-
-        .slide img,
-        .slide video {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            user-select: none;
-            -webkit-user-drag: none;
-        }
-
-        /* Bottom Bar */
-        .bottom-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 40px 16px 12px;
-            padding-bottom: max(12px, env(safe-area-inset-bottom));
-            background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 60%, rgba(0,0,0,0) 100%);
-            z-index: 50;
-            transition: transform 0.3s ease, opacity 0.3s ease;
-        }
-
-        .bottom-bar.hidden {
-            transform: translateY(100%);
-            opacity: 0;
-        }
-
-        .post-title {
-            font-size: 14px;
-            line-height: 1.4;
-            margin-bottom: 8px;
-        }
-
-        .post-title a {
-            color: #fff;
-            text-decoration: none;
-        }
-
-        .post-meta {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 12px;
-            color: rgba(255,255,255,0.5);
-        }
-
-        .gallery-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 10px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-            color: rgba(255,255,255,0.9);
-        }
-
-        .gallery-dots {
-            display: flex;
-            gap: 4px;
-            margin-top: 10px;
-        }
-
-        .gallery-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.3);
-            transition: all 0.2s;
-        }
-
-        .gallery-dot.active {
-            background: #fff;
-            width: 18px;
-            border-radius: 3px;
-        }
-
-        /* Counter */
-        .counter {
-            position: fixed;
-            top: max(100px, calc(env(safe-area-inset-top) + 90px));
-            right: 16px;
-            font-size: 12px;
-            font-weight: 500;
-            color: rgba(255,255,255,0.5);
-            background: rgba(0,0,0,0.5);
-            padding: 4px 10px;
-            border-radius: 12px;
-            z-index: 90;
-            transition: opacity 0.3s;
-        }
-
-        .counter.hidden {
-            opacity: 0;
-        }
-
-        /* Loading State */
-        .loading {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-            color: rgba(255,255,255,0.5);
-        }
-
-        .spinner {
-            width: 36px;
-            height: 36px;
-            border: 3px solid rgba(255,255,255,0.15);
-            border-top-color: #ff4500;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 20px;
-            color: rgba(255,255,255,0.5);
-        }
-
-        .empty-state h2 {
-            margin-bottom: 8px;
-            color: #fff;
-            font-weight: 600;
-        }
-
-        /* Error State */
-        .error {
-            background: rgba(255,68,68,0.15);
-            padding: 10px 14px;
-            border-radius: 12px;
-            margin-top: 10px;
-            font-size: 13px;
-            color: #ff6b6b;
-        }
-
-        /* Touch zones - only for desktop click, not mobile */
-        .touch-zone {
-            position: fixed;
-            top: 0;
-            bottom: 0;
-            z-index: 55;
-            pointer-events: none;
-        }
-
-        /* Enable touch zones only on non-touch devices */
-        @media (hover: hover) and (pointer: fine) {
-            .touch-zone {
-                pointer-events: auto;
-            }
-        }
-
-        .touch-zone.left {
-            left: 0;
-            width: 25%;
-        }
-
-        .touch-zone.right {
-            right: 0;
-            width: 25%;
-        }
-
-        .touch-zone.center {
-            left: 25%;
-            width: 50%;
-        }
-
-        /* Navigation hint on first load */
-        .nav-hint {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            align-items: center;
-            gap: 40px;
-            color: rgba(255,255,255,0.4);
-            font-size: 14px;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.5s;
-            z-index: 80;
-        }
-
-        .nav-hint.show {
-            opacity: 1;
-        }
-
-        .nav-hint span {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .nav-hint .arrow {
-            font-size: 32px;
-            opacity: 0.6;
-        }
-
-        /* Preloader for images */
-        .slide-loading {
-            position: absolute;
-            width: 30px;
-            height: 30px;
-            border: 2px solid rgba(255,255,255,0.1);
-            border-top-color: rgba(255,255,255,0.4);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        /* Swipe animation feedback */
-        .swipe-feedback {
-            position: fixed;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 50px;
-            height: 50px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            opacity: 0;
-            transition: opacity 0.15s;
-            pointer-events: none;
-            z-index: 200;
-        }
-
-        .swipe-feedback.left { left: 20px; }
-        .swipe-feedback.right { right: 20px; }
-        .swipe-feedback.show { opacity: 1; }
-
-        /* Zoom & Pan for images */
-        .slide img.zoomed {
-            max-width: none;
-            max-height: none;
-            cursor: grab;
-            transition: none;
-        }
-
-        .slide img.zoomed.dragging {
-            cursor: grabbing;
-        }
-
-        .zoom-indicator {
-            position: fixed;
-            bottom: 50%;
-            left: 50%;
-            transform: translate(-50%, 50%);
-            background: rgba(0,0,0,0.7);
-            color: #fff;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 14px;
-            opacity: 0;
-            transition: opacity 0.2s;
-            pointer-events: none;
-            z-index: 300;
-        }
-
-        .zoom-indicator.show {
-            opacity: 1;
-        }
-
-        /* NSFW Toggle */
-        .nsfw-toggle {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            border: none;
-            border-radius: 14px;
-            background: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.6);
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .nsfw-toggle.active {
-            background: rgba(255,68,68,0.3);
-            color: #ff6b6b;
-        }
-
-        .nsfw-toggle .toggle-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.3);
-            transition: background 0.2s;
-        }
-
-        .nsfw-toggle.active .toggle-dot {
-            background: #ff6b6b;
-        }
-
-        /* Autoplay controls */
-        .autoplay-controls {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-left: auto;
-        }
-
-        .autoplay-btn {
-            width: 32px;
-            height: 32px;
-            border: none;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.7);
-            font-size: 14px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-
-        .autoplay-btn:hover {
-            background: rgba(255,255,255,0.15);
-        }
-
-        .autoplay-btn.playing {
-            background: #ff4500;
-            color: #fff;
-        }
-
-        .speed-select {
-            padding: 4px 8px;
-            border: none;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.7);
-            font-size: 12px;
-            cursor: pointer;
-            outline: none;
-        }
-
-        .speed-select option {
-            background: #1a1a1a;
-            color: #fff;
-        }
-
-        /* External media badge */
-        .source-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 2px 8px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 10px;
-            font-size: 11px;
-            color: rgba(255,255,255,0.6);
-            margin-left: 8px;
-        }
-    </style>
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <header class="header" id="header">
-        <form class="top-row" id="subredditForm">
+    <!-- Skip Link for Keyboard Users -->
+    <a href="#slideshow" class="skip-link">Skip to content</a>
+
+    <!-- Header / Controls -->
+    <header class="header" id="header" role="banner">
+        <form class="top-row" id="subredditForm" role="search" aria-label="Subreddit search">
+            <label for="subredditInput" class="sr-only">Subreddit name</label>
             <input
                 type="text"
                 class="subreddit-input"
                 id="subredditInput"
+                name="subreddit"
                 placeholder="pics+earthporn or subreddit..."
                 autocomplete="off"
                 autocapitalize="none"
+                autocorrect="off"
                 spellcheck="false"
+                aria-describedby="subredditHint"
             >
-            <button type="submit" class="icon-btn primary" id="loadBtn" title="Load">▶</button>
-            <button type="button" class="icon-btn" id="fullscreenBtn" title="Fullscreen">⛶</button>
+            <span id="subredditHint" class="sr-only">Enter a subreddit name. Use + to combine multiple subreddits.</span>
+
+            <button
+                type="submit"
+                class="icon-btn primary"
+                id="loadBtn"
+                title="Load subreddit"
+                aria-label="Load subreddit"
+            >▶</button>
+
+            <button
+                type="button"
+                class="icon-btn"
+                id="fullscreenBtn"
+                title="Fullscreen"
+                aria-label="Toggle fullscreen mode"
+                aria-pressed="false"
+            >⛶</button>
         </form>
-        <div class="sort-row">
-            <button class="sort-btn active" data-sort="hot">Hot</button>
-            <button class="sort-btn" data-sort="new">New</button>
-            <button class="sort-btn" data-sort="top">Top</button>
-            <select class="time-select" id="timeSelect" style="display: none;">
+
+        <div class="sort-row" role="toolbar" aria-label="Sort and filter options">
+            <button
+                class="sort-btn active"
+                data-sort="hot"
+                aria-pressed="true"
+                title="Sort by hot"
+            >Hot</button>
+            <button
+                class="sort-btn"
+                data-sort="new"
+                aria-pressed="false"
+                title="Sort by new"
+            >New</button>
+            <button
+                class="sort-btn"
+                data-sort="top"
+                aria-pressed="false"
+                title="Sort by top"
+            >Top</button>
+
+            <label for="timeSelect" class="sr-only">Time period for top posts</label>
+            <select
+                class="time-select"
+                id="timeSelect"
+                style="display: none;"
+                aria-label="Time period"
+            >
                 <option value="day">Today</option>
                 <option value="week">This Week</option>
                 <option value="month">This Month</option>
                 <option value="year">This Year</option>
                 <option value="all">All Time</option>
             </select>
-            <button class="nsfw-toggle" id="nsfwToggle" title="Toggle NSFW content">
-                <span class="toggle-dot"></span>
+
+            <button
+                class="nsfw-toggle"
+                id="nsfwToggle"
+                title="Toggle NSFW content"
+                aria-label="Toggle NSFW content visibility"
+                aria-pressed="false"
+            >
+                <span class="toggle-dot" aria-hidden="true"></span>
                 <span>NSFW</span>
             </button>
-            <div class="autoplay-controls">
-                <select class="speed-select" id="speedSelect" title="Autoplay speed">
+
+            <div class="autoplay-controls" role="group" aria-label="Autoplay controls">
+                <label for="speedSelect" class="sr-only">Autoplay speed</label>
+                <select
+                    class="speed-select"
+                    id="speedSelect"
+                    title="Autoplay speed"
+                    aria-label="Autoplay interval"
+                >
                     <option value="2000">2s</option>
                     <option value="3000" selected>3s</option>
                     <option value="5000">5s</option>
                     <option value="8000">8s</option>
                     <option value="10000">10s</option>
                 </select>
-                <button class="autoplay-btn" id="autoplayBtn" title="Autoplay">▶</button>
+                <button
+                    class="autoplay-btn"
+                    id="autoplayBtn"
+                    title="Autoplay"
+                    aria-label="Toggle slideshow autoplay"
+                    aria-pressed="false"
+                >▶</button>
             </div>
         </div>
-        <div class="error" id="error" style="display: none;"></div>
+
+        <div
+            class="error"
+            id="error"
+            style="display: none;"
+            role="alert"
+            aria-live="assertive"
+        ></div>
     </header>
 
-    <div class="counter hidden" id="counter"></div>
+    <!-- Slide Counter -->
+    <div
+        class="counter hidden"
+        id="counter"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+    ></div>
 
-    <div class="slideshow-container" id="slideshow">
-        <div class="empty-state" id="emptyState">
+    <!-- Main Slideshow Area -->
+    <main
+        class="slideshow-container"
+        id="slideshow"
+        role="region"
+        aria-label="Media slideshow"
+        aria-roledescription="slideshow"
+    >
+        <div class="empty-state" id="emptyState" role="status">
             <h2>Reddit Viewer</h2>
             <p>Enter a subreddit to start browsing</p>
         </div>
-    </div>
+    </main>
 
-    <div class="bottom-bar hidden" id="bottomBar">
+    <!-- Bottom Info Bar -->
+    <footer class="bottom-bar hidden" id="bottomBar" role="contentinfo">
         <div class="post-title" id="postTitle"></div>
         <div class="post-meta" id="postMeta"></div>
-        <div class="gallery-dots" id="galleryDots"></div>
-    </div>
+        <div
+            class="gallery-dots"
+            id="galleryDots"
+            role="tablist"
+            aria-label="Gallery position"
+        ></div>
+    </footer>
 
-    <div class="nav-hint" id="navHint">
+    <!-- Navigation Hint (shown on first load) -->
+    <div class="nav-hint" id="navHint" aria-hidden="true">
         <span><span class="arrow">‹</span>Prev</span>
         <span><span class="arrow">›</span>Next</span>
     </div>
 
-    <div class="swipe-feedback left" id="swipeFeedbackLeft">‹</div>
-    <div class="swipe-feedback right" id="swipeFeedbackRight">›</div>
-    <div class="zoom-indicator" id="zoomIndicator">2x Zoom</div>
-
-    <!-- Touch zones for mobile -->
-    <div class="touch-zone left" id="touchLeft"></div>
-    <div class="touch-zone center" id="touchCenter"></div>
-    <div class="touch-zone right" id="touchRight"></div>
-
-    <script>
-        const state = {
-            slides: [],
-            currentIndex: 0,
-            sort: 'hot',
-            time: 'all',
-            subreddit: '',
-            loading: false,
-            after: null,
-            uiVisible: true,
-            firstLoad: true,
-            // NSFW filter
-            showNSFW: false,
-            // Autoplay
-            autoplay: false,
-            autoplayInterval: null,
-            autoplaySpeed: 3000,
-            // Zoom & Pan
-            isZoomed: false,
-            zoomScale: 2,
-            panX: 0,
-            panY: 0,
-            isPanning: false,
-            panStartX: 0,
-            panStartY: 0,
-            // Preload cache
-            preloadedImages: new Set()
-        };
-
-        const elements = {
-            header: document.getElementById('header'),
-            subredditForm: document.getElementById('subredditForm'),
-            subredditInput: document.getElementById('subredditInput'),
-            loadBtn: document.getElementById('loadBtn'),
-            fullscreenBtn: document.getElementById('fullscreenBtn'),
-            timeSelect: document.getElementById('timeSelect'),
-            error: document.getElementById('error'),
-            counter: document.getElementById('counter'),
-            slideshow: document.getElementById('slideshow'),
-            emptyState: document.getElementById('emptyState'),
-            bottomBar: document.getElementById('bottomBar'),
-            postTitle: document.getElementById('postTitle'),
-            postMeta: document.getElementById('postMeta'),
-            galleryDots: document.getElementById('galleryDots'),
-            navHint: document.getElementById('navHint'),
-            touchLeft: document.getElementById('touchLeft'),
-            touchCenter: document.getElementById('touchCenter'),
-            touchRight: document.getElementById('touchRight'),
-            swipeFeedbackLeft: document.getElementById('swipeFeedbackLeft'),
-            swipeFeedbackRight: document.getElementById('swipeFeedbackRight'),
-            nsfwToggle: document.getElementById('nsfwToggle'),
-            autoplayBtn: document.getElementById('autoplayBtn'),
-            speedSelect: document.getElementById('speedSelect'),
-            zoomIndicator: document.getElementById('zoomIndicator')
-        };
-
-        // Fullscreen
-        elements.fullscreenBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            toggleFullscreen();
-        });
-
-        function toggleFullscreen() {
-            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-                const el = document.documentElement;
-                if (el.requestFullscreen) {
-                    el.requestFullscreen();
-                } else if (el.webkitRequestFullscreen) {
-                    el.webkitRequestFullscreen();
-                }
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                } else if (document.webkitExitFullscreen) {
-                    document.webkitExitFullscreen();
-                }
-            }
-        }
-
-        function updateFullscreenButton() {
-            const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
-            elements.fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶';
-            elements.fullscreenBtn.title = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
-
-            // Auto-hide UI when entering fullscreen, show when exiting
-            if (isFullscreen) {
-                state.uiVisible = false;
-                elements.header.classList.add('hidden');
-                elements.bottomBar.classList.add('hidden');
-                elements.counter.classList.add('hidden');
-            } else {
-                state.uiVisible = true;
-                elements.header.classList.remove('hidden');
-                elements.bottomBar.classList.remove('hidden');
-                elements.counter.classList.remove('hidden');
-            }
-        }
-
-        document.addEventListener('fullscreenchange', updateFullscreenButton);
-        document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
-
-        // NSFW Toggle
-        elements.nsfwToggle.addEventListener('click', () => {
-            state.showNSFW = !state.showNSFW;
-            elements.nsfwToggle.classList.toggle('active', state.showNSFW);
-            if (state.subreddit) loadSubreddit(state.subreddit);
-        });
-
-        // Autoplay controls
-        elements.autoplayBtn.addEventListener('click', toggleAutoplay);
-        elements.speedSelect.addEventListener('change', () => {
-            state.autoplaySpeed = parseInt(elements.speedSelect.value);
-            if (state.autoplay) {
-                stopAutoplay();
-                startAutoplay();
-            }
-        });
-
-        function toggleAutoplay() {
-            if (state.autoplay) {
-                stopAutoplay();
-            } else {
-                startAutoplay();
-            }
-        }
-
-        function startAutoplay() {
-            if (state.slides.length === 0) return;
-            state.autoplay = true;
-            elements.autoplayBtn.classList.add('playing');
-            elements.autoplayBtn.textContent = '⏸';
-            elements.autoplayBtn.title = 'Pause';
-            state.autoplayInterval = setInterval(() => {
-                if (state.currentIndex < state.slides.length - 1) {
-                    navigate(1);
-                } else {
-                    stopAutoplay();
-                }
-            }, state.autoplaySpeed);
-        }
-
-        function stopAutoplay() {
-            state.autoplay = false;
-            elements.autoplayBtn.classList.remove('playing');
-            elements.autoplayBtn.textContent = '▶';
-            elements.autoplayBtn.title = 'Autoplay';
-            if (state.autoplayInterval) {
-                clearInterval(state.autoplayInterval);
-                state.autoplayInterval = null;
-            }
-        }
-
-        // Sort buttons
-        document.querySelectorAll('.sort-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                state.sort = btn.dataset.sort;
-                elements.timeSelect.style.display = state.sort === 'top' ? 'inline-block' : 'none';
-                if (state.subreddit) loadSubreddit(state.subreddit);
-            });
-        });
-
-        elements.timeSelect.addEventListener('change', () => {
-            state.time = elements.timeSelect.value;
-            if (state.subreddit) loadSubreddit(state.subreddit);
-        });
-
-        // Form
-        elements.subredditForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const sub = elements.subredditInput.value.trim().replace(/^r\//, '').replace(/\/$/, '');
-            if (sub) loadSubreddit(sub);
-        });
-
-        async function loadSubreddit(subreddit) {
-            state.subreddit = subreddit;
-            state.slides = [];
-            state.currentIndex = 0;
-            state.after = null;
-            state.loading = true;
-            state.preloadedImages.clear();
-
-            // Stop autoplay and reset zoom when loading new content
-            stopAutoplay();
-            resetZoom();
-
-            elements.loadBtn.disabled = true;
-            elements.error.style.display = 'none';
-            elements.emptyState.style.display = 'flex';
-            elements.emptyState.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading...</p></div>';
-            elements.bottomBar.classList.add('hidden');
-            elements.counter.classList.add('hidden');
-
-            try {
-                await fetchPosts();
-                if (state.slides.length === 0) {
-                    elements.emptyState.innerHTML = '<div class="empty-state"><h2>No media found</h2><p>Try a different subreddit</p></div>';
-                } else {
-                    elements.emptyState.style.display = 'none';
-                    renderSlideshow();
-                    showUI();
-
-                    // Show navigation hint briefly on first load
-                    if (state.firstLoad) {
-                        state.firstLoad = false;
-                        elements.navHint.classList.add('show');
-                        setTimeout(() => elements.navHint.classList.remove('show'), 2500);
-                    }
-                }
-            } catch (err) {
-                console.error(err);
-                elements.error.textContent = err.message || 'Failed to load';
-                elements.error.style.display = 'block';
-                elements.emptyState.innerHTML = '<div class="empty-state"><h2>Error</h2><p>Could not load subreddit</p></div>';
-            } finally {
-                state.loading = false;
-                elements.loadBtn.disabled = false;
-            }
-        }
-
-        function jsonp(url) {
-            return new Promise((resolve, reject) => {
-                const cb = 'cb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                const script = document.createElement('script');
-                const timeout = setTimeout(() => { cleanup(); reject(new Error('Timeout')); }, 15000);
-
-                function cleanup() {
-                    clearTimeout(timeout);
-                    delete window[cb];
-                    script.remove();
-                }
-
-                window[cb] = (data) => { cleanup(); resolve(data); };
-                script.onerror = () => { cleanup(); reject(new Error('Failed to load')); };
-                script.src = url + (url.includes('?') ? '&' : '?') + 'jsonp=' + cb;
-                document.head.appendChild(script);
-            });
-        }
-
-        async function fetchPosts(loadMore = false) {
-            let url = `https://www.reddit.com/r/${state.subreddit}/${state.sort}.json?limit=100&raw_json=1`;
-            if (state.sort === 'top') url += `&t=${state.time}`;
-            if (loadMore && state.after) url += `&after=${state.after}`;
-
-            const data = await jsonp(url);
-            if (!data?.data) throw new Error('Subreddit not found');
-
-            state.after = data.data.after;
-            const newSlides = [];
-
-            for (const child of data.data.children) {
-                const post = child.data;
-                const slides = extractMedia(post);
-                newSlides.push(...slides);
-            }
-
-            state.slides = loadMore ? [...state.slides, ...newSlides] : newSlides;
-        }
-
-        function extractMedia(post) {
-            const slides = [];
-
-            // NSFW filtering
-            if (post.over_18 && !state.showNSFW) {
-                return slides;
-            }
-
-            const base = {
-                postId: post.id,
-                title: post.title,
-                permalink: `https://reddit.com${post.permalink}`,
-                author: post.author,
-                subreddit: post.subreddit,
-                isNSFW: post.over_18,
-                source: 'reddit'
-            };
-
-            // Gallery posts - check media_metadata
-            if (post.is_gallery && post.media_metadata) {
-                const items = post.gallery_data?.items || Object.keys(post.media_metadata).map(id => ({ media_id: id }));
-                const total = items.length;
-
-                items.forEach((item, idx) => {
-                    const media = post.media_metadata[item.media_id];
-                    if (!media) return;
-
-                    // Get the best quality image (decode HTML entities in URLs)
-                    let url = null;
-                    if (media.s?.u) {
-                        url = decodeHtmlEntities(media.s.u);
-                    } else if (media.s?.gif) {
-                        url = decodeHtmlEntities(media.s.gif);
-                    } else if (media.p && media.p.length > 0) {
-                        url = decodeHtmlEntities(media.p[media.p.length - 1].u);
-                    }
-
-                    if (url) {
-                        slides.push({
-                            ...base,
-                            type: media.e === 'AnimatedImage' ? 'gif' : 'image',
-                            url: url,
-                            isGallery: true,
-                            galleryIndex: idx + 1,
-                            galleryTotal: total
-                        });
-                    }
-                });
-
-                if (slides.length > 0) return slides;
-            }
-
-            // Reddit video
-            if (post.is_video && post.media?.reddit_video?.fallback_url) {
-                slides.push({
-                    ...base,
-                    type: 'video',
-                    url: post.media.reddit_video.fallback_url
-                });
-                return slides;
-            }
-
-            // Direct image link
-            if (post.url && /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(post.url)) {
-                slides.push({ ...base, type: 'image', url: post.url });
-                return slides;
-            }
-
-            // i.redd.it images
-            if (post.url && post.url.includes('i.redd.it')) {
-                slides.push({ ...base, type: 'image', url: post.url });
-                return slides;
-            }
-
-            // External media support
-            const externalMedia = extractExternalMedia(post.url, base);
-            if (externalMedia) {
-                slides.push(externalMedia);
-                return slides;
-            }
-
-            // Preview images as fallback (decode HTML entities in URLs)
-            if (post.preview?.images?.[0]) {
-                const img = post.preview.images[0];
-                // Check for gif/video in preview
-                if (img.variants?.mp4?.source?.url) {
-                    slides.push({ ...base, type: 'video', url: decodeHtmlEntities(img.variants.mp4.source.url) });
-                    return slides;
-                }
-                if (img.variants?.gif?.source?.url) {
-                    slides.push({ ...base, type: 'image', url: decodeHtmlEntities(img.variants.gif.source.url) });
-                    return slides;
-                }
-                if (img.source?.url) {
-                    slides.push({ ...base, type: 'image', url: decodeHtmlEntities(img.source.url) });
-                    return slides;
-                }
-            }
-
-            return slides;
-        }
-
-        // Extract media from external sources (Imgur, Gfycat, Giphy, Redgifs)
-        function extractExternalMedia(url, base) {
-            if (!url) return null;
-
-            // Imgur direct images
-            const imgurDirectMatch = url.match(/imgur\.com\/(\w+)(?:\.(jpg|jpeg|png|gif|gifv|mp4))?/i);
-            if (imgurDirectMatch) {
-                const imgurId = imgurDirectMatch[1];
-                const ext = imgurDirectMatch[2]?.toLowerCase();
-
-                // Skip album/gallery links (they have 'a/' or 'gallery/' in path)
-                if (url.includes('/a/') || url.includes('/gallery/')) {
-                    // For albums, use the first image via i.imgur.com
-                    return {
-                        ...base,
-                        type: 'image',
-                        url: `https://i.imgur.com/${imgurId}.jpg`,
-                        source: 'imgur'
-                    };
-                }
-
-                if (ext === 'gifv' || ext === 'mp4') {
-                    return {
-                        ...base,
-                        type: 'video',
-                        url: `https://i.imgur.com/${imgurId}.mp4`,
-                        source: 'imgur'
-                    };
-                }
-                return {
-                    ...base,
-                    type: 'image',
-                    url: `https://i.imgur.com/${imgurId}.jpg`,
-                    source: 'imgur'
-                };
-            }
-
-            // i.imgur.com direct links
-            if (url.includes('i.imgur.com')) {
-                const gifvMatch = url.match(/i\.imgur\.com\/(\w+)\.gifv/i);
-                if (gifvMatch) {
-                    return {
-                        ...base,
-                        type: 'video',
-                        url: `https://i.imgur.com/${gifvMatch[1]}.mp4`,
-                        source: 'imgur'
-                    };
-                }
-                return {
-                    ...base,
-                    type: 'image',
-                    url: url.replace('.gifv', '.mp4'),
-                    source: 'imgur'
-                };
-            }
-
-            // Gfycat
-            const gfycatMatch = url.match(/gfycat\.com\/(?:(?:gifs\/detail|ifr|watch)\/)?(\w+)/i);
-            if (gfycatMatch) {
-                const gfyId = gfycatMatch[1].split('-')[0]; // Remove any suffix
-                return {
-                    ...base,
-                    type: 'video',
-                    url: `https://thumbs.gfycat.com/${gfyId}-mobile.mp4`,
-                    source: 'gfycat'
-                };
-            }
-
-            // Redgifs
-            const redgifsMatch = url.match(/redgifs\.com\/(?:watch|ifr)\/(\w+)/i);
-            if (redgifsMatch) {
-                const redgifId = redgifsMatch[1].toLowerCase();
-                return {
-                    ...base,
-                    type: 'video',
-                    url: `https://thumbs44.redgifs.com/${redgifId}.mp4`,
-                    source: 'redgifs'
-                };
-            }
-
-            // Giphy
-            const giphyMatch = url.match(/giphy\.com\/(?:gifs|media)\/(?:.*-)?(\w+)/i);
-            if (giphyMatch) {
-                const giphyId = giphyMatch[1];
-                return {
-                    ...base,
-                    type: 'image',
-                    url: `https://media.giphy.com/media/${giphyId}/giphy.gif`,
-                    source: 'giphy'
-                };
-            }
-
-            // i.giphy.com direct
-            if (url.includes('i.giphy.com') || url.includes('media.giphy.com')) {
-                return {
-                    ...base,
-                    type: 'image',
-                    url: url,
-                    source: 'giphy'
-                };
-            }
-
-            return null;
-        }
-
-        function renderSlideshow() {
-            elements.slideshow.querySelectorAll('.slide').forEach(s => s.remove());
-            updateSlides();
-            updateUI();
-        }
-
-        function updateSlides() {
-            const container = elements.slideshow;
-            container.querySelectorAll('.slide').forEach(s => s.remove());
-
-            [-1, 0, 1].forEach(offset => {
-                const idx = state.currentIndex + offset;
-                if (idx < 0 || idx >= state.slides.length) return;
-
-                const data = state.slides[idx];
-                const slide = document.createElement('div');
-                slide.className = 'slide';
-                if (offset === -1) slide.classList.add('prev');
-                else if (offset === 0) slide.classList.add('active');
-                else slide.classList.add('next');
-
-                if (data.type === 'video') {
-                    const video = document.createElement('video');
-                    video.src = data.url;
-                    video.controls = true;
-                    video.loop = true;
-                    video.playsInline = true;
-                    video.muted = true;
-                    video.preload = 'auto';
-                    if (offset === 0) video.autoplay = true;
-                    slide.appendChild(video);
-                } else {
-                    const img = document.createElement('img');
-                    img.src = data.url;
-                    img.alt = data.title;
-                    img.draggable = false;
-                    slide.appendChild(img);
-                }
-
-                container.appendChild(slide);
-            });
-        }
-
-        function updateUI() {
-            const data = state.slides[state.currentIndex];
-            if (!data) return;
-
-            // Counter
-            elements.counter.textContent = `${state.currentIndex + 1} / ${state.slides.length}`;
-            elements.counter.classList.toggle('hidden', !state.uiVisible);
-
-            // Title
-            elements.postTitle.innerHTML = `<a href="${data.permalink}" target="_blank">${escapeHtml(data.title)}</a>`;
-
-            // Meta info
-            let meta = `r/${data.subreddit}`;
-            if (data.isGallery) {
-                meta += ` <span class="gallery-indicator">📷 ${data.galleryIndex}/${data.galleryTotal}</span>`;
-            }
-            // Show source badge for external media
-            if (data.source && data.source !== 'reddit') {
-                meta += ` <span class="source-badge">${data.source}</span>`;
-            }
-            elements.postMeta.innerHTML = meta;
-
-            // Gallery dots
-            if (data.isGallery && data.galleryTotal <= 20) {
-                let dots = '';
-                for (let i = 1; i <= data.galleryTotal; i++) {
-                    dots += `<div class="gallery-dot${i === data.galleryIndex ? ' active' : ''}"></div>`;
-                }
-                elements.galleryDots.innerHTML = dots;
-                elements.galleryDots.style.display = 'flex';
-            } else {
-                elements.galleryDots.style.display = 'none';
-            }
-
-            elements.bottomBar.classList.toggle('hidden', !state.uiVisible);
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        function decodeHtmlEntities(str) {
-            if (!str) return str;
-            const textarea = document.createElement('textarea');
-            textarea.innerHTML = str;
-            return textarea.value;
-        }
-
-        function navigate(dir) {
-            const newIdx = state.currentIndex + dir;
-            if (newIdx < 0 || newIdx >= state.slides.length) return;
-
-            // Reset zoom when navigating
-            resetZoom();
-
-            // Show swipe feedback
-            const feedback = dir < 0 ? elements.swipeFeedbackLeft : elements.swipeFeedbackRight;
-            feedback.classList.add('show');
-            setTimeout(() => feedback.classList.remove('show'), 150);
-
-            // Pause video
-            const video = elements.slideshow.querySelector('.slide.active video');
-            if (video) video.pause();
-
-            state.currentIndex = newIdx;
-            updateSlides();
-            updateUI();
-
-            // Preload images ahead (5 images)
-            preloadImages();
-
-            // Preload more posts from API
-            if (state.slides.length - state.currentIndex < 15 && state.after && !state.loading) {
-                state.loading = true;
-                fetchPosts(true).then(() => {
-                    state.loading = false;
-                    updateUI();
-                });
-            }
-        }
-
-        // Image preloading - preload 5 images ahead
-        function preloadImages() {
-            for (let i = 1; i <= 5; i++) {
-                const idx = state.currentIndex + i;
-                if (idx >= state.slides.length) break;
-
-                const data = state.slides[idx];
-                if (data.type === 'image' && !state.preloadedImages.has(data.url)) {
-                    const img = new Image();
-                    img.src = data.url;
-                    state.preloadedImages.add(data.url);
-                }
-            }
-        }
-
-        // Zoom & Pan functions
-        function resetZoom() {
-            state.isZoomed = false;
-            state.panX = 0;
-            state.panY = 0;
-            state.isPanning = false;
-
-            const img = elements.slideshow.querySelector('.slide.active img');
-            if (img) {
-                img.classList.remove('zoomed', 'dragging');
-                img.style.transform = '';
-            }
-        }
-
-        function toggleZoom() {
-            const img = elements.slideshow.querySelector('.slide.active img');
-            if (!img) return;
-
-            state.isZoomed = !state.isZoomed;
-
-            if (state.isZoomed) {
-                state.panX = 0;
-                state.panY = 0;
-                img.classList.add('zoomed');
-                img.style.transform = `scale(${state.zoomScale}) translate(0px, 0px)`;
-
-                // Show zoom indicator
-                elements.zoomIndicator.textContent = `${state.zoomScale}x Zoom`;
-                elements.zoomIndicator.classList.add('show');
-                setTimeout(() => elements.zoomIndicator.classList.remove('show'), 800);
-            } else {
-                img.classList.remove('zoomed');
-                img.style.transform = '';
-                state.panX = 0;
-                state.panY = 0;
-            }
-        }
-
-        function updatePan(img) {
-            if (!state.isZoomed || !img) return;
-            img.style.transform = `scale(${state.zoomScale}) translate(${state.panX}px, ${state.panY}px)`;
-        }
-
-        function toggleUI() {
-            state.uiVisible = !state.uiVisible;
-            elements.header.classList.toggle('hidden', !state.uiVisible);
-            elements.bottomBar.classList.toggle('hidden', !state.uiVisible);
-            elements.counter.classList.toggle('hidden', !state.uiVisible);
-        }
-
-        function showUI() {
-            state.uiVisible = true;
-            elements.header.classList.remove('hidden');
-            elements.bottomBar.classList.remove('hidden');
-            elements.counter.classList.remove('hidden');
-        }
-
-        // Event listeners
-        elements.touchLeft.addEventListener('click', () => navigate(-1));
-        elements.touchRight.addEventListener('click', () => navigate(1));
-        elements.touchCenter.addEventListener('click', toggleUI);
-
-        // Keyboard
-        document.addEventListener('keydown', (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-            switch (e.key) {
-                case 'ArrowLeft':
-                case 'ArrowUp':
-                    if (!state.isZoomed) navigate(-1);
-                    break;
-                case 'ArrowRight':
-                case 'ArrowDown':
-                case ' ':
-                    if (!state.isZoomed) navigate(1);
-                    e.preventDefault();
-                    break;
-                case 'Escape':
-                    if (state.isZoomed) {
-                        resetZoom();
-                    } else {
-                        showUI();
-                    }
-                    break;
-                case 'f':
-                case 'F':
-                    toggleFullscreen();
-                    break;
-                case 'z':
-                case 'Z':
-                    toggleZoom();
-                    break;
-                case 'p':
-                case 'P':
-                    toggleAutoplay();
-                    break;
-            }
-        });
-
-        // Swipe, tap, double-tap, and pan handling
-        let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
-        let lastTapTime = 0;
-        let isPanningTouch = false;
-
-        document.addEventListener('touchstart', (e) => {
-            // Ignore touches on form elements
-            if (e.target.closest('.header') || e.target.closest('.bottom-bar')) return;
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-            touchStartTime = Date.now();
-
-            // Start panning if zoomed
-            if (state.isZoomed) {
-                isPanningTouch = true;
-                state.panStartX = touchStartX;
-                state.panStartY = touchStartY;
-                const img = elements.slideshow.querySelector('.slide.active img');
-                if (img) img.classList.add('dragging');
-            }
-        }, { passive: true });
-
-        document.addEventListener('touchmove', (e) => {
-            if (!state.isZoomed || !isPanningTouch) return;
-            if (e.target.closest('.header') || e.target.closest('.bottom-bar')) return;
-
-            const currentX = e.touches[0].clientX;
-            const currentY = e.touches[0].clientY;
-            const dx = (currentX - state.panStartX) / state.zoomScale;
-            const dy = (currentY - state.panStartY) / state.zoomScale;
-
-            state.panX += dx;
-            state.panY += dy;
-            state.panStartX = currentX;
-            state.panStartY = currentY;
-
-            const img = elements.slideshow.querySelector('.slide.active img');
-            updatePan(img);
-        }, { passive: true });
-
-        document.addEventListener('touchend', (e) => {
-            // Ignore touches on form elements
-            if (e.target.closest('.header') || e.target.closest('.bottom-bar')) return;
-
-            const dx = e.changedTouches[0].clientX - touchStartX;
-            const dy = e.changedTouches[0].clientY - touchStartY;
-            const dt = Date.now() - touchStartTime;
-
-            // End panning
-            if (isPanningTouch) {
-                isPanningTouch = false;
-                const img = elements.slideshow.querySelector('.slide.active img');
-                if (img) img.classList.remove('dragging');
-            }
-
-            // If zoomed, don't process swipes/taps as navigation (except double-tap to zoom out)
-            if (state.isZoomed) {
-                // Double-tap to zoom out
-                const timeSinceLastTap = Date.now() - lastTapTime;
-                if (timeSinceLastTap < 300 && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-                    resetZoom();
-                    lastTapTime = 0;
-                    return;
-                }
-                lastTapTime = Date.now();
-                return;
-            }
-
-            // Double-tap detection for zoom
-            const timeSinceLastTap = Date.now() - lastTapTime;
-            if (timeSinceLastTap < 300 && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-                toggleZoom();
-                lastTapTime = 0;
-                return;
-            }
-            lastTapTime = Date.now();
-
-            // Swipe detection (only when not zoomed)
-            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
-                navigate(dx > 0 ? -1 : 1);
-            }
-            // Single tap detection (after double-tap window expires)
-            else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
-                // Delay toggle UI to allow for double-tap detection
-                setTimeout(() => {
-                    if (Date.now() - lastTapTime > 250) {
-                        toggleUI();
-                    }
-                }, 300);
-            }
-        }, { passive: true });
-
-        // Mouse drag for panning (desktop)
-        let isMouseDragging = false;
-        let mouseStartX = 0, mouseStartY = 0;
-
-        elements.slideshow.addEventListener('mousedown', (e) => {
-            if (!state.isZoomed) return;
-            if (e.target.tagName !== 'IMG') return;
-
-            isMouseDragging = true;
-            mouseStartX = e.clientX;
-            mouseStartY = e.clientY;
-            e.target.classList.add('dragging');
-            e.preventDefault();
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (!isMouseDragging || !state.isZoomed) return;
-
-            const dx = (e.clientX - mouseStartX) / state.zoomScale;
-            const dy = (e.clientY - mouseStartY) / state.zoomScale;
-
-            state.panX += dx;
-            state.panY += dy;
-            mouseStartX = e.clientX;
-            mouseStartY = e.clientY;
-
-            const img = elements.slideshow.querySelector('.slide.active img');
-            updatePan(img);
-        });
-
-        document.addEventListener('mouseup', () => {
-            if (isMouseDragging) {
-                isMouseDragging = false;
-                const img = elements.slideshow.querySelector('.slide.active img');
-                if (img) img.classList.remove('dragging');
-            }
-        });
-
-        // Double-click to zoom (desktop)
-        elements.slideshow.addEventListener('dblclick', (e) => {
-            if (e.target.tagName === 'IMG') {
-                toggleZoom();
-            }
-        });
-
-        // Focus input
-        elements.subredditInput.focus();
-    </script>
+    <!-- Swipe Feedback Indicators -->
+    <div class="swipe-feedback left" id="swipeFeedbackLeft" aria-hidden="true">‹</div>
+    <div class="swipe-feedback right" id="swipeFeedbackRight" aria-hidden="true">›</div>
+
+    <!-- Zoom Indicator -->
+    <div class="zoom-indicator" id="zoomIndicator" aria-live="polite">2x Zoom</div>
+
+    <!-- Touch Zones for Desktop Click Navigation -->
+    <div
+        class="touch-zone left"
+        id="touchLeft"
+        role="button"
+        aria-label="Previous slide"
+        tabindex="-1"
+    ></div>
+    <div
+        class="touch-zone center"
+        id="touchCenter"
+        role="button"
+        aria-label="Toggle controls"
+        tabindex="-1"
+    ></div>
+    <div
+        class="touch-zone right"
+        id="touchRight"
+        role="button"
+        aria-label="Next slide"
+        tabindex="-1"
+    ></div>
+
+    <!-- Application JavaScript (ES Modules) -->
+    <script type="module" src="js/app.js"></script>
 </body>
 </html>
