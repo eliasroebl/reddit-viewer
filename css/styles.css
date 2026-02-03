@@ -203,7 +203,119 @@ body {
 }
 
 /* ==========================================================================
-   4. Sort & Filter Controls
+   4. Subreddit Autocomplete
+   ========================================================================== */
+
+.subreddit-input-wrapper {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.subreddit-input-wrapper .subreddit-input {
+    width: 100%;
+}
+
+.autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: var(--spacing-xs);
+    background: rgba(30, 30, 30, 0.98);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    max-height: 280px;
+    overflow-y: auto;
+    z-index: 150;
+    display: none;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.autocomplete-dropdown.visible {
+    display: block;
+}
+
+.autocomplete-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.highlighted {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.autocomplete-item-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.autocomplete-item-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.autocomplete-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.autocomplete-item-name {
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.autocomplete-item-name strong {
+    color: var(--color-primary);
+}
+
+.autocomplete-item-subscribers {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+}
+
+.autocomplete-loading {
+    padding: var(--spacing-lg);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+}
+
+.autocomplete-empty {
+    padding: var(--spacing-lg);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+}
+
+/* ==========================================================================
+   5. Sort & Filter Controls
    ========================================================================== */
 
 .sort-row {

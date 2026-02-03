@@ -33,6 +33,7 @@ import {
     stopAutoplay,
     resetZoom
 } from './controls.js';
+import { initAutocomplete, destroyAutocomplete } from './autocomplete.js';
 
 /**
  * Loads user preferences from localStorage
@@ -202,6 +203,12 @@ function init() {
     // Show welcome state
     showWelcomeState();
 
+    // Initialize autocomplete
+    const autocompleteDropdown = document.getElementById('autocompleteDropdown');
+    if (elements.subredditInput && autocompleteDropdown) {
+        initAutocomplete(elements.subredditInput, autocompleteDropdown);
+    }
+
     // Focus input for quick typing
     if (elements.subredditInput) {
         elements.subredditInput.focus();
@@ -217,6 +224,7 @@ function init() {
  */
 function cleanup() {
     cleanupEventListeners();
+    destroyAutocomplete();
     stopAutoplay();
     savePreferences();
 }

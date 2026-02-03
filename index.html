@@ -26,20 +26,32 @@
     <!-- Header / Controls -->
     <header class="header" id="header" role="banner">
         <form class="top-row" id="subredditForm" role="search" aria-label="Subreddit search">
-            <label for="subredditInput" class="sr-only">Subreddit name</label>
-            <input
-                type="text"
-                class="subreddit-input"
-                id="subredditInput"
-                name="subreddit"
-                placeholder="pics+earthporn or subreddit..."
-                autocomplete="off"
-                autocapitalize="none"
-                autocorrect="off"
-                spellcheck="false"
-                aria-describedby="subredditHint"
-            >
-            <span id="subredditHint" class="sr-only">Enter a subreddit name. Use + to combine multiple subreddits.</span>
+            <div class="subreddit-input-wrapper">
+                <label for="subredditInput" class="sr-only">Subreddit name</label>
+                <input
+                    type="text"
+                    class="subreddit-input"
+                    id="subredditInput"
+                    name="subreddit"
+                    placeholder="pics+earthporn or subreddit..."
+                    autocomplete="off"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    aria-describedby="subredditHint"
+                    aria-expanded="false"
+                    aria-controls="autocompleteDropdown"
+                    aria-autocomplete="list"
+                    role="combobox"
+                >
+                <span id="subredditHint" class="sr-only">Enter a subreddit name. Use + to combine multiple subreddits.</span>
+                <div
+                    class="autocomplete-dropdown"
+                    id="autocompleteDropdown"
+                    role="listbox"
+                    aria-label="Subreddit suggestions"
+                ></div>
+            </div>
 
             <button
                 type="submit"
