@@ -35,10 +35,24 @@ import { generateCallbackName, sleep } from './utils.js';
  */
 
 /**
- * Makes a JSONP request to bypass CORS restrictions
+ * Makes a fetch request via CORS proxy
  *
- * JSONP works by dynamically creating a script tag that loads a JavaScript
- * file which calls a predefined callback function with the data.
+ * @param {string} url - URL to request
+ * @returns {Promise<Object>} Response data
+ * @throws {Error} On timeout or network error
+ */
+async function fetchViaProxy(url) {
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+}
+
+/**
+ * Makes a JSONP request to bypass CORS restrictions
+ * Falls back to CORS proxy if JSONP fails (e.g., on mobile)
  *
  * @param {string} url - URL to request (without callback parameter)
  * @returns {Promise<Object>} Response data
@@ -47,15 +61,26 @@ import { generateCallbackName, sleep } from './utils.js';
  * @example
  * const data = await jsonp('https://www.reddit.com/r/pics.json');
  */
-export function jsonp(url) {
+export async function jsonp(url) {
+    // Try JSONP first
+    try {
+        return await jsonpDirect(url);
+    } catch (e) {
+        console.log('JSONP failed, trying CORS proxy...');
+        // Fall back to CORS proxy
+        return fetchViaProxy(url);
+    }
+}
+
+/**
+ * Direct JSONP implementation
+ */
+function jsonpDirect(url) {
     return new Promise((resolve, reject) => {
         const callbackName = generateCallbackName();
         const script = document.createElement('script');
         let timeoutId;
 
-        /**
-         * Cleanup function to remove script and callback
-         */
         function cleanup() {
             clearTimeout(timeoutId);
             delete window[callbackName];
@@ -64,32 +89,27 @@ export function jsonp(url) {
             }
         }
 
-        // Set up timeout
         timeoutId = setTimeout(() => {
             cleanup();
             reject(new Error('Request timeout'));
         }, CONFIG.api.REQUEST_TIMEOUT);
 
-        // Set up callback
         window[callbackName] = (data) => {
             cleanup();
             resolve(data);
         };
 
-        // Handle script load error
         script.onerror = () => {
             cleanup();
             reject(new Error('Failed to load'));
         };
 
-        // Build URL with callback parameter
         const separator = url.includes('?') ? '&' : '?';
         const finalUrl = `${url}${separator}jsonp=${callbackName}`;
 
         console.log('JSONP request:', finalUrl);
         script.src = finalUrl;
 
-        // Add script to document to initiate request
         document.head.appendChild(script);
     });
 }
