@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="A media-focused Reddit browser with slideshow viewing, gallery support, and external media integration">
+
+    <!-- PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <title>Reddit Viewer</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%230a0a0a' width='100' height='100' rx='15'/%3E%3Ccircle fill='%23ff4500' cx='50' cy='45' r='28'/%3E%3Ccircle fill='white' cx='38' cy='40' r='6'/%3E%3Ccircle fill='white' cx='62' cy='40' r='6'/%3E%3Ccircle fill='black' cx='38' cy='40' r='3'/%3E%3Ccircle fill='black' cx='62' cy='40' r='3'/%3E%3Cellipse fill='%23ff4500' cx='50' cy='75' rx='8' ry='4'/%3E%3Ccircle fill='%23ff4500' cx='78' cy='20' r='8'/%3E%3Crect fill='%23ff4500' x='76' y='3' width='4' height='17'/%3E%3C/svg%3E">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Skip Link for Keyboard Users -->
+    <a href="#slideshow" class="skip-link">Skip to content</a>
+
+    <!-- Header / Controls -->
+    <header class="header" id="header" role="banner">
+        <form class="top-row" id="subredditForm" role="search" aria-label="Subreddit search">
+            <div class="subreddit-input-wrapper">
+                <label for="subredditInput" class="sr-only">Subreddit name</label>
+                <input
+                    type="text"
+                    class="subreddit-input"
+                    id="subredditInput"
+                    name="subreddit"
+                    placeholder="pics+earthporn or subreddit..."
+                    autocomplete="off"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    aria-describedby="subredditHint"
+                    aria-expanded="false"
+                    aria-controls="autocompleteDropdown"
+                    aria-autocomplete="list"
+                    role="combobox"
+                >
+                <span id="subredditHint" class="sr-only">Enter a subreddit name. Use + to combine multiple subreddits.</span>
+                <div
+                    class="autocomplete-dropdown"
+                    id="autocompleteDropdown"
+                    role="listbox"
+                    aria-label="Subreddit suggestions"
+                ></div>
+            </div>
+
+            <button
+                type="submit"
+                class="icon-btn primary"
+                id="loadBtn"
+                title="Load subreddit"
+                aria-label="Load subreddit"
+            >▶</button>
+
+            <button
+                type="button"
+                class="icon-btn"
+                id="fullscreenBtn"
+                title="Fullscreen"
+                aria-label="Toggle fullscreen mode"
+                aria-pressed="false"
+            >⛶</button>
+        </form>
+
+        <div class="sort-row" role="toolbar" aria-label="Sort and filter options">
+            <button
+                class="sort-btn active"
+                data-sort="hot"
+                aria-pressed="true"
+                title="Sort by hot"
+            >Hot</button>
+            <button
+                class="sort-btn"
+                data-sort="new"
+                aria-pressed="false"
+                title="Sort by new"
+            >New</button>
+            <button
+                class="sort-btn"
+                data-sort="top"
+                aria-pressed="false"
+                title="Sort by top"
+            >Top</button>
+
+            <label for="timeSelect" class="sr-only">Time period for top posts</label>
+            <select
+                class="time-select"
+                id="timeSelect"
+                style="display: none;"
+                aria-label="Time period"
+            >
+                <option value="day">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="year">This Year</option>
+                <option value="all">All Time</option>
+            </select>
+
+            <button
+                class="nsfw-toggle"
+                id="nsfwToggle"
+                title="Toggle NSFW content"
+                aria-label="Toggle NSFW content visibility"
+                aria-pressed="false"
+            >
+                <span class="toggle-dot" aria-hidden="true"></span>
+                <span>NSFW</span>
+            </button>
+
+            <div class="autoplay-controls" role="group" aria-label="Autoplay controls">
+                <label for="speedSelect" class="sr-only">Autoplay speed</label>
+                <select
+                    class="speed-select"
+                    id="speedSelect"
+                    title="Autoplay speed"
+                    aria-label="Autoplay interval"
+                >
+                    <option value="2000">2s</option>
+                    <option value="3000" selected>3s</option>
+                    <option value="5000">5s</option>
+                    <option value="8000">8s</option>
+                    <option value="10000">10s</option>
+                </select>
+                <button
+                    class="autoplay-btn"
+                    id="autoplayBtn"
+                    title="Autoplay"
+                    aria-label="Toggle slideshow autoplay"
+                    aria-pressed="false"
+                >▶</button>
+            </div>
+        </div>
+
+        <div
+            class="error"
+            id="error"
+            style="display: none;"
+            role="alert"
+            aria-live="assertive"
+        ></div>
+    </header>
+
+    <!-- Slide Counter -->
+    <div
+        class="counter hidden"
+        id="counter"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+    ></div>
+
+    <!-- Main Slideshow Area -->
+    <main
+        class="slideshow-container"
+        id="slideshow"
+        role="region"
+        aria-label="Media slideshow"
+        aria-roledescription="slideshow"
+    >
+        <div class="empty-state" id="emptyState" role="status">
+            <h2>Reddit Viewer</h2>
+            <p>Enter a subreddit to start browsing</p>
+        </div>
+    </main>
+
+    <!-- Bottom Info Bar -->
+    <footer class="bottom-bar hidden" id="bottomBar" role="contentinfo">
+        <div class="post-title" id="postTitle"></div>
+        <div class="post-meta" id="postMeta"></div>
+        <div
+            class="gallery-dots"
+            id="galleryDots"
+            role="tablist"
+            aria-label="Gallery position"
+        ></div>
+    </footer>
+
+    <!-- Navigation Hint (shown on first load) -->
+    <div class="nav-hint" id="navHint" aria-hidden="true">
+        <span><span class="arrow">‹</span>Prev</span>
+        <span><span class="arrow">›</span>Next</span>
+    </div>
+
+    <!-- Swipe Feedback Indicators -->
+    <div class="swipe-feedback left" id="swipeFeedbackLeft" aria-hidden="true">‹</div>
+    <div class="swipe-feedback right" id="swipeFeedbackRight" aria-hidden="true">›</div>
+
+    <!-- Zoom Indicator -->
+    <div class="zoom-indicator" id="zoomIndicator" aria-live="polite">2x Zoom</div>
+
+    <!-- Touch Zones for Desktop Click Navigation -->
+    <div
+        class="touch-zone left"
+        id="touchLeft"
+        role="button"
+        aria-label="Previous slide"
+        tabindex="-1"
+    ></div>
+    <div
+        class="touch-zone center"
+        id="touchCenter"
+        role="button"
+        aria-label="Toggle controls"
+        tabindex="-1"
+    ></div>
+    <div
+        class="touch-zone right"
+        id="touchRight"
+        role="button"
+        aria-label="Next slide"
+        tabindex="-1"
+    ></div>
+
+    <!-- Application JavaScript (ES Modules) -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
