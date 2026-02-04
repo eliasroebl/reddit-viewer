@@ -35,19 +35,39 @@ import { generateCallbackName, sleep } from './utils.js';
  */
 
 /**
+ * List of CORS proxies to try
+ */
+const CORS_PROXIES = [
+    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+];
+
+/**
  * Makes a fetch request via CORS proxy
+ * Tries multiple proxies if one fails
  *
  * @param {string} url - URL to request
  * @returns {Promise<Object>} Response data
  * @throws {Error} On timeout or network error
  */
 async function fetchViaProxy(url) {
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-    const response = await fetch(proxyUrl);
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+    let lastError;
+
+    for (const makeProxyUrl of CORS_PROXIES) {
+        try {
+            const proxyUrl = makeProxyUrl(url);
+            console.log('Trying proxy:', proxyUrl);
+            const response = await fetch(proxyUrl);
+            if (response.ok) {
+                return response.json();
+            }
+        } catch (e) {
+            lastError = e;
+        }
     }
-    return response.json();
+
+    throw lastError || new Error('All proxies failed');
 }
 
 /**
