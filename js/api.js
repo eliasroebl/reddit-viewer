@@ -71,6 +71,11 @@ async function fetchViaProxy(url) {
 }
 
 /**
+ * Track if JSONP works (skip it if it failed before)
+ */
+let jsonpWorks = true;
+
+/**
  * Makes a JSONP request to bypass CORS restrictions
  * Falls back to CORS proxy if JSONP fails (e.g., on mobile)
  *
@@ -82,12 +87,17 @@ async function fetchViaProxy(url) {
  * const data = await jsonp('https://www.reddit.com/r/pics.json');
  */
 export async function jsonp(url) {
+    // Skip JSONP if it failed before (use proxy directly)
+    if (!jsonpWorks) {
+        return fetchViaProxy(url);
+    }
+
     // Try JSONP first
     try {
         return await jsonpDirect(url);
     } catch (e) {
-        console.log('JSONP failed, trying CORS proxy...');
-        // Fall back to CORS proxy
+        console.log('JSONP failed, using CORS proxy for all future requests...');
+        jsonpWorks = false;
         return fetchViaProxy(url);
     }
 }
