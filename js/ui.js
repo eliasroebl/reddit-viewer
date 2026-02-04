@@ -100,6 +100,12 @@ function createSlideElement(data, position) {
         video.muted = true;
         video.preload = 'auto';
         video.setAttribute('aria-label', data.title);
+        video.crossOrigin = 'anonymous';
+
+        // Add error handling for debugging
+        video.onerror = (e) => {
+            console.error('Video error:', video.error?.message || 'Unknown error', 'Code:', video.error?.code, 'URL:', video.src);
+        };
 
         if (position === 'active') {
             video.autoplay = true;
@@ -110,6 +116,7 @@ function createSlideElement(data, position) {
             video.poster = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle" fill="white" font-size="12">Loading...</text></svg>';
             fetchExternalVideoUrl(data.externalVideoId).then(url => {
                 if (url) {
+                    console.log('Setting video src:', url);
                     video.src = url;
                     // Update slide data for future use
                     data.url = url;
