@@ -280,12 +280,15 @@ async function getExternalVideoToken() {
         const authUrl = `${_xvb()}/auth/temporary`;
         let response;
 
+        const headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        };
+
         if (CONFIG.proxy.ENABLED) {
-            response = await fetchViaWorkerProxy(authUrl);
+            response = await fetchViaWorkerProxy(authUrl, { headers });
         } else {
-            response = await fetch(authUrl, {
-                headers: { 'Accept': 'application/json' }
-            });
+            response = await fetch(authUrl, { headers });
         }
 
         const data = await response.json();
@@ -310,24 +313,25 @@ export async function fetchExternalVideoUrl(id) {
     if (!token) return null;
 
     try {
-        const apiUrl = `${_xvb()}/gifs/${id}`;
+        const apiUrl = `${_xvb()}/gifs/${id.toLowerCase()}`;
         let response;
 
+        const headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        };
+
         if (CONFIG.proxy.ENABLED) {
-            response = await fetchViaWorkerProxy(apiUrl, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            response = await fetchViaWorkerProxy(apiUrl, { headers });
         } else {
-            response = await fetch(apiUrl, {
-                headers: {
-                    'Accept': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            response = await fetch(apiUrl, { headers });
         }
 
         const data = await response.json();
-        return data.gif?.urls?.hd || data.gif?.urls?.sd || null;
+        // Try multiple response paths for compatibility
+        const urls = data.gif?.urls || data.urls || {};
+        return urls.hd || urls.sd || urls.poster || null;
     } catch (error) {
         console.warn('Failed to fetch external video URL:', error);
         return null;

@@ -49,11 +49,15 @@ async function handleRequest(request) {
     }
 
     const headers = new Headers();
-    headers.set('User-Agent', 'Mozilla/5.0 (compatible; RedditViewer/1.0)');
+    headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    headers.set('Accept', 'application/json');
 
-    // Pass through Authorization for external video API
-    if (request.headers.has('Authorization')) {
-        headers.set('Authorization', request.headers.get('Authorization'));
+    // Pass through headers for external video API
+    const passHeaders = ['Authorization', 'Content-Type'];
+    for (const h of passHeaders) {
+        if (request.headers.has(h)) {
+            headers.set(h, request.headers.get(h));
+        }
     }
 
     try {
