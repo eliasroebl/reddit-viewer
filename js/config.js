@@ -13,6 +13,18 @@
  */
 const CONFIG = Object.freeze({
     /**
+     * Proxy Configuration
+     * Update PROXY_URL with your Cloudflare Worker URL after deployment
+     */
+    proxy: {
+        /** Cloudflare Worker proxy URL */
+        URL: 'https://delicate-tree-1777.eliasroebl.workers.dev',
+
+        /** Proxy is enabled */
+        ENABLED: true
+    },
+
+    /**
      * API Configuration
      */
     api: {

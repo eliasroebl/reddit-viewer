@@ -9,6 +9,7 @@
 
 import CONFIG from './config.js';
 import { decodeHtmlEntities, createRedditUrl, isDirectImageUrl, isRedditImageUrl } from './utils.js';
+import { fetchViaWorkerProxy } from './api.js';
 
 /**
  * @typedef {Object} ExtractedMedia
@@ -276,9 +277,17 @@ async function getExternalVideoToken() {
     }
 
     try {
-        const response = await fetch(`${_xvb()}/auth/temporary`, {
-            headers: { 'Accept': 'application/json' }
-        });
+        const authUrl = `${_xvb()}/auth/temporary`;
+        let response;
+
+        if (CONFIG.proxy.ENABLED) {
+            response = await fetchViaWorkerProxy(authUrl);
+        } else {
+            response = await fetch(authUrl, {
+                headers: { 'Accept': 'application/json' }
+            });
+        }
+
         const data = await response.json();
         if (data.token) {
             externalVideoToken = data.token;
@@ -301,12 +310,22 @@ export async function fetchExternalVideoUrl(id) {
     if (!token) return null;
 
     try {
-        const response = await fetch(`${_xvb()}/gifs/${id}`, {
-            headers: {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        const apiUrl = `${_xvb()}/gifs/${id}`;
+        let response;
+
+        if (CONFIG.proxy.ENABLED) {
+            response = await fetchViaWorkerProxy(apiUrl, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        } else {
+            response = await fetch(apiUrl, {
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+        }
+
         const data = await response.json();
         return data.gif?.urls?.hd || data.gif?.urls?.sd || null;
     } catch (error) {

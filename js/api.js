@@ -35,7 +35,7 @@ import { generateCallbackName, sleep } from './utils.js';
  */
 
 /**
- * List of CORS proxies to try
+ * Fallback CORS proxies (used when custom proxy is not configured)
  */
 const CORS_PROXIES = [
     (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
@@ -44,14 +44,44 @@ const CORS_PROXIES = [
 ];
 
 /**
+ * Makes a fetch request via the configured Cloudflare Worker proxy
+ *
+ * @param {string} url - URL to request
+ * @param {Object} [options={}] - Fetch options
+ * @param {Object} [options.headers] - Additional headers to pass through
+ * @returns {Promise<Response>} Fetch response
+ */
+export async function fetchViaWorkerProxy(url, options = {}) {
+    const proxyUrl = `${CONFIG.proxy.URL}?url=${encodeURIComponent(url)}`;
+    const fetchOptions = {};
+
+    if (options.headers) {
+        fetchOptions.headers = options.headers;
+    }
+
+    const response = await fetch(proxyUrl, fetchOptions);
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+    return response;
+}
+
+/**
  * Makes a fetch request via CORS proxy
- * Tries multiple proxies if one fails
+ * Uses Cloudflare Worker proxy if configured, otherwise falls back to public proxies
  *
  * @param {string} url - URL to request
  * @returns {Promise<Object>} Response data
  * @throws {Error} On timeout or network error
  */
 async function fetchViaProxy(url) {
+    // Use custom Cloudflare Worker proxy if configured
+    if (CONFIG.proxy.ENABLED) {
+        const response = await fetchViaWorkerProxy(url);
+        return response.json();
+    }
+
+    // Fallback to public CORS proxies
     let lastError;
 
     for (const makeProxyUrl of CORS_PROXIES) {
@@ -291,6 +321,7 @@ if (typeof window !== 'undefined') {
     window.api = {
         jsonp,
         fetchWithRetry,
+        fetchViaWorkerProxy,
         buildRedditUrl,
         fetchPosts,
         isValidSubreddit,
@@ -301,6 +332,7 @@ if (typeof window !== 'undefined') {
 export default {
     jsonp,
     fetchWithRetry,
+    fetchViaWorkerProxy,
     buildRedditUrl,
     fetchPosts,
     isValidSubreddit,
