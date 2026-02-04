@@ -161,7 +161,7 @@ const CONFIG = Object.freeze({
         GFYCAT: /gfycat\.com\/(?:(?:gifs\/detail|ifr|watch)\/)?(\w+)/i,
 
         /** Pattern for external video provider URLs */
-        EXTERNAL_VIDEO: new RegExp('(?:www\\.)?' + atob('cmVkZ2lmcw==') + '\\.com\\/(?:watch|ifr)\\/([\\w-]+)', 'i'),
+        EXTERNAL_VIDEO: new RegExp('(?:[a-z0-9]+\\.)?' + atob('cmVkZ2lmcw==') + '\\.com\\/(?:watch|ifr)\\/([\\w-]+)', 'i'),
 
         /** Pattern for Giphy URLs */
         GIPHY: /giphy\.com\/(?:gifs|media)\/(?:.*-)?(\w+)/i

@@ -309,8 +309,13 @@ async function getExternalVideoToken() {
  * @returns {Promise<string|null>} Video URL or null on failure
  */
 export async function fetchExternalVideoUrl(id) {
+    console.log('Fetching external video URL for ID:', id);
     const token = await getExternalVideoToken();
-    if (!token) return null;
+    if (!token) {
+        console.warn('Failed to get external video token');
+        return null;
+    }
+    console.log('Got token, fetching video info...');
 
     try {
         const apiUrl = `${_xvb()}/gifs/${id.toLowerCase()}`;
@@ -329,9 +334,12 @@ export async function fetchExternalVideoUrl(id) {
         }
 
         const data = await response.json();
+        console.log('API response:', JSON.stringify(data).substring(0, 500));
         // Try multiple response paths for compatibility
         const urls = data.gif?.urls || data.urls || {};
-        return urls.hd || urls.sd || urls.poster || null;
+        const videoUrl = urls.hd || urls.sd || urls.poster || null;
+        console.log('Resolved video URL:', videoUrl);
+        return videoUrl;
     } catch (error) {
         console.warn('Failed to fetch external video URL:', error);
         return null;
@@ -347,12 +355,15 @@ export async function fetchExternalVideoUrl(id) {
  * @private
  */
 function extractExternalVideoMedia(url, base) {
+    console.log('Checking external video URL:', url);
     const match = url.match(CONFIG.mediaPatterns.EXTERNAL_VIDEO);
     if (!match) {
+        console.log('No match for external video pattern');
         return null;
     }
 
     const videoId = match[1].toLowerCase();
+    console.log('Extracted video ID:', videoId);
 
     return {
         ...base,
@@ -418,7 +429,10 @@ export function extractExternalMedia(url, base) {
         return extractGfycatMedia(url, base);
     }
 
-    if (url.includes(atob('cmVkZ2lmcy5jb20='))) {
+    // Check for external video provider (multiple domain formats)
+    const extDomain = atob('cmVkZ2lmcy5jb20=');
+    if (url.includes(extDomain)) {
+        console.log('Found external video domain in URL:', url);
         return extractExternalVideoMedia(url, base);
     }
 
