@@ -30,7 +30,7 @@ async function handleRequest(request) {
     }
 
     // Only allow Reddit and the external video API
-    const allowed = ['old.reddit.com', 'www.reddit.com', 'api.redgifs.com'];
+    const allowed = ['old.reddit.com', 'www.reddit.com', 'api.redgifs.com', 'media.redgifs.com'];
     let targetHost;
     try {
         targetHost = new URL(targetUrl).hostname;
@@ -50,7 +50,15 @@ async function handleRequest(request) {
 
     const headers = new Headers();
     headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    headers.set('Accept', 'application/json');
+
+    // Set appropriate Accept header based on target
+    if (targetHost === 'media.redgifs.com') {
+        headers.set('Accept', '*/*');
+        headers.set('Referer', 'https://www.redgifs.com/');
+        headers.set('Origin', 'https://www.redgifs.com');
+    } else {
+        headers.set('Accept', 'application/json');
+    }
 
     // Pass through headers for external video API
     const passHeaders = ['Authorization', 'Content-Type'];
