@@ -337,8 +337,16 @@ export async function fetchExternalVideoUrl(id) {
         console.log('API response:', JSON.stringify(data).substring(0, 500));
         // Try multiple response paths for compatibility
         const urls = data.gif?.urls || data.urls || {};
-        const videoUrl = urls.hd || urls.sd || urls.poster || null;
+        const videoUrl = urls.hd || urls.sd || null;
         console.log('Resolved video URL:', videoUrl);
+
+        // Return proxied URL to bypass hotlink protection
+        if (videoUrl && CONFIG.proxy.ENABLED) {
+            const proxiedUrl = `${CONFIG.proxy.URL}?url=${encodeURIComponent(videoUrl)}`;
+            console.log('Using proxied URL:', proxiedUrl);
+            return proxiedUrl;
+        }
+
         return videoUrl;
     } catch (error) {
         console.warn('Failed to fetch external video URL:', error);
