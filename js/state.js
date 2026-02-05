@@ -91,7 +91,11 @@ const initialState = {
     // Video preloading cache (TikTok-style instant playback)
     preloadedVideoUrls: new Map(),   // videoId → resolved URL
     preloadedVideos: new Map(),       // slideIndex → { element, url, timestamp }
-    preloadingInProgress: new Set()   // videoIds currently being resolved
+    preloadingInProgress: new Set(),  // videoIds currently being resolved
+
+    // Video playback state
+    videoMuted: true,                 // User's mute preference (persists across videos)
+    preloadingPaused: false           // Whether preloading is paused for bandwidth
 };
 
 /**

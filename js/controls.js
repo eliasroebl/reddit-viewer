@@ -27,7 +27,9 @@ import {
     applyZoomTransform,
     setImageDragging,
     cleanupOldPreloads,
-    preloadUpcomingVideos
+    preloadUpcomingVideos,
+    startBufferMonitoring,
+    stopBufferMonitoring
 } from './ui.js';
 import { fetchPosts } from './api.js';
 import { extractMediaFromPosts, preloadExternalVideoUrls } from './media.js';
@@ -79,16 +81,26 @@ export function navigate(direction) {
     // Show swipe feedback
     showSwipeFeedback(direction < 0 ? 'left' : 'right');
 
+    // Stop buffer monitoring for old video
+    stopBufferMonitoring();
+
     // Pause current video
     const video = getActiveVideo();
     if (video) video.pause();
 
-    // Update state
-    store.setState({ currentIndex: newIdx });
+    // Update state - reset preloading pause for new slide
+    store.setState({ currentIndex: newIdx, preloadingPaused: false });
 
     // Update display
     updateSlides();
     updateUI();
+
+    // Start buffer monitoring if new slide is a video
+    const newSlide = slides[newIdx];
+    if (newSlide && newSlide.type === 'video') {
+        // Delay slightly to let video start playing
+        setTimeout(startBufferMonitoring, 100);
+    }
 
     // Preload upcoming media (images and videos)
     preloadUpcomingMedia();
@@ -143,6 +155,12 @@ export function triggerInitialPreload() {
     const currentIndex = store.get('currentIndex');
 
     if (slides.length === 0) return;
+
+    // Start buffer monitoring if first slide is a video
+    const firstSlide = slides[currentIndex];
+    if (firstSlide && firstSlide.type === 'video') {
+        setTimeout(startBufferMonitoring, 100);
+    }
 
     // Pre-resolve external video URLs for first several slides
     preloadExternalVideoUrls(slides, currentIndex, CONFIG.preloading.URL_PRELOAD_COUNT);

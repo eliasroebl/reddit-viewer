@@ -75,7 +75,16 @@ const CONFIG = Object.freeze({
         CLEANUP_THRESHOLD: 3,
 
         /** Maximum videos in cache (memory limit) */
-        MAX_CACHED_VIDEOS: 5
+        MAX_CACHED_VIDEOS: 5,
+
+        /** Buffer management - pause preloads below this (seconds) */
+        MIN_BUFFER_SECONDS: 2,
+
+        /** Buffer management - resume preloads above this (seconds) */
+        HEALTHY_BUFFER_SECONDS: 5,
+
+        /** How often to check buffer health (milliseconds) */
+        BUFFER_CHECK_INTERVAL: 500
     },
 
     /**

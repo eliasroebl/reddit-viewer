@@ -79,8 +79,110 @@ export function getActiveVideo() {
 }
 
 /**
+ * Gets the buffer health of a video element
+ * Returns seconds of video buffered ahead of current playback position
+ *
+ * @param {HTMLVideoElement} video - Video element to check
+ * @returns {number} Seconds of buffer ahead (0 if no buffer)
+ */
+export function getBufferHealth(video) {
+    if (!video || video.buffered.length === 0) return 0;
+
+    // Find the buffer range that contains the current time
+    for (let i = 0; i < video.buffered.length; i++) {
+        if (video.buffered.start(i) <= video.currentTime && video.currentTime <= video.buffered.end(i)) {
+            return video.buffered.end(i) - video.currentTime;
+        }
+    }
+
+    // If current time is not in any buffer range, return 0
+    return 0;
+}
+
+/**
+ * Pauses all preloaded video elements to free bandwidth
+ */
+export function pauseAllPreloads() {
+    if (store.get('preloadingPaused')) return; // Already paused
+
+    const preloadedVideos = store.get('preloadedVideos');
+    for (const [slideIndex, cached] of preloadedVideos.entries()) {
+        if (cached.element && !cached.element.paused) {
+            cached.element.pause();
+        }
+    }
+    store.setState({ preloadingPaused: true });
+    console.log('Preloading paused - current video needs bandwidth');
+}
+
+/**
+ * Resumes preloading for upcoming videos
+ */
+export function resumePreloads() {
+    if (!store.get('preloadingPaused')) return; // Already running
+
+    store.setState({ preloadingPaused: false });
+    console.log('Preloading resumed - buffer is healthy');
+
+    // Resume loading the next video (don't aggressively load all)
+    const currentIndex = store.get('currentIndex');
+    const preloadedVideos = store.get('preloadedVideos');
+    const nextVideoCache = preloadedVideos.get(currentIndex + 1);
+
+    if (nextVideoCache && nextVideoCache.element) {
+        // Trigger loading by playing then immediately pausing
+        nextVideoCache.element.play().then(() => {
+            nextVideoCache.element.pause();
+        }).catch(() => {});
+    }
+}
+
+/** Buffer monitoring interval ID */
+let bufferMonitorInterval = null;
+
+/**
+ * Starts monitoring the current video's buffer health
+ * Pauses preloading when buffer is low, resumes when healthy
+ */
+export function startBufferMonitoring() {
+    // Clear any existing monitor
+    stopBufferMonitoring();
+
+    const checkBuffer = () => {
+        const video = getActiveVideo();
+        if (!video) return;
+
+        const bufferHealth = getBufferHealth(video);
+        const minBuffer = CONFIG.preloading.MIN_BUFFER_SECONDS;
+        const healthyBuffer = CONFIG.preloading.HEALTHY_BUFFER_SECONDS;
+
+        if (bufferHealth < minBuffer && !store.get('preloadingPaused')) {
+            pauseAllPreloads();
+        } else if (bufferHealth > healthyBuffer && store.get('preloadingPaused')) {
+            resumePreloads();
+        }
+    };
+
+    // Check immediately
+    checkBuffer();
+
+    // Then check periodically
+    bufferMonitorInterval = setInterval(checkBuffer, CONFIG.preloading.BUFFER_CHECK_INTERVAL);
+}
+
+/**
+ * Stops buffer health monitoring
+ */
+export function stopBufferMonitoring() {
+    if (bufferMonitorInterval) {
+        clearInterval(bufferMonitorInterval);
+        bufferMonitorInterval = null;
+    }
+}
+
+/**
  * Preloads a video element for a given slide
- * Creates a hidden video element that starts buffering immediately
+ * Uses metadata preload initially, only buffers when current video is healthy
  *
  * @param {Object} slideData - Slide data object
  * @param {number} slideIndex - Index of the slide
@@ -93,9 +195,16 @@ export function preloadVideoElement(slideData, slideIndex, videoUrl) {
     if (preloadedVideos.has(slideIndex)) return;
     if (preloadedVideos.size >= CONFIG.preloading.MAX_CACHED_VIDEOS) return;
 
+    // Skip if preloading is paused (current video needs bandwidth)
+    if (store.get('preloadingPaused')) {
+        console.log(`Skipping preload for slide ${slideIndex} - preloading paused`);
+        return;
+    }
+
     const video = document.createElement('video');
     video.src = videoUrl;
-    video.preload = 'auto';
+    // Use 'metadata' instead of 'auto' to be less aggressive
+    video.preload = 'metadata';
     video.muted = true;
     video.playsInline = true;
     video.loop = true;
@@ -129,6 +238,15 @@ export function preloadVideoElement(slideData, slideIndex, videoUrl) {
     });
 
     console.log(`Started preloading video for slide ${slideIndex}`);
+
+    // Only start buffering the NEXT video (priority), not all preloaded videos
+    const currentIndex = store.get('currentIndex');
+    if (slideIndex === currentIndex + 1) {
+        // Trigger loading by playing then immediately pausing
+        video.play().then(() => {
+            video.pause();
+        }).catch(() => {});
+    }
 }
 
 /**
@@ -214,6 +332,88 @@ export async function preloadUpcomingVideos(slides, currentIndex) {
     }
 }
 
+/** Timer for auto-hiding video controls */
+let controlsHideTimer = null;
+
+/**
+ * Creates a video controls overlay with mute button
+ *
+ * @param {HTMLVideoElement} video - Video element to control
+ * @returns {HTMLElement} Controls overlay element
+ * @private
+ */
+function createVideoControlsOverlay(video) {
+    const overlay = document.createElement('div');
+    overlay.className = 'video-controls-overlay';
+
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'video-mute-btn';
+    muteBtn.setAttribute('aria-label', video.muted ? 'Unmute' : 'Mute');
+    muteBtn.innerHTML = video.muted ? '🔇' : '🔊';
+
+    muteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        video.muted = !video.muted;
+        muteBtn.innerHTML = video.muted ? '🔇' : '🔊';
+        muteBtn.setAttribute('aria-label', video.muted ? 'Unmute' : 'Mute');
+        // Persist mute state
+        store.setState({ videoMuted: video.muted });
+        // Reset auto-hide timer
+        showVideoControls(overlay);
+    });
+
+    // Update button when mute state changes externally
+    video.addEventListener('volumechange', () => {
+        muteBtn.innerHTML = video.muted ? '🔇' : '🔊';
+        muteBtn.setAttribute('aria-label', video.muted ? 'Unmute' : 'Mute');
+    });
+
+    overlay.appendChild(muteBtn);
+    return overlay;
+}
+
+/**
+ * Shows video controls and sets up auto-hide timer
+ *
+ * @param {HTMLElement} overlay - Controls overlay element
+ */
+function showVideoControls(overlay) {
+    overlay.classList.add('visible');
+
+    // Clear any existing timer
+    if (controlsHideTimer) {
+        clearTimeout(controlsHideTimer);
+    }
+
+    // Auto-hide after 3 seconds
+    controlsHideTimer = setTimeout(() => {
+        overlay.classList.remove('visible');
+    }, 3000);
+}
+
+/**
+ * Sets up tap-to-show controls behavior for a video slide
+ *
+ * @param {HTMLElement} slide - Slide element
+ * @param {HTMLElement} overlay - Controls overlay element
+ */
+function setupVideoTapHandler(slide, overlay) {
+    slide.addEventListener('click', (e) => {
+        // Don't trigger on button clicks
+        if (e.target.closest('.video-mute-btn')) return;
+
+        // Toggle controls visibility on tap
+        if (overlay.classList.contains('visible')) {
+            overlay.classList.remove('visible');
+            if (controlsHideTimer) {
+                clearTimeout(controlsHideTimer);
+            }
+        } else {
+            showVideoControls(overlay);
+        }
+    });
+}
+
 /**
  * Creates a slide element for the slideshow
  *
@@ -232,26 +432,36 @@ function createSlideElement(data, position, slideIndex) {
     if (data.type === 'video') {
         // Check for preloaded video element first
         const preloadedVideo = getPreloadedVideo(slideIndex);
+        // Get user's mute preference
+        const videoMuted = store.get('videoMuted');
 
         if (preloadedVideo) {
             // Use the preloaded video (already buffered!)
             console.log(`Using preloaded video for slide ${slideIndex}`);
-            preloadedVideo.controls = true;
             preloadedVideo.setAttribute('aria-label', data.title);
+            // Apply user's mute preference
+            preloadedVideo.muted = videoMuted;
+
+            // Add video controls overlay
+            const overlay = createVideoControlsOverlay(preloadedVideo);
+            slide.appendChild(preloadedVideo);
+            slide.appendChild(overlay);
+            setupVideoTapHandler(slide, overlay);
 
             if (position === 'active') {
                 preloadedVideo.autoplay = true;
                 preloadedVideo.play().catch(() => {});
+                // Show controls briefly on active video
+                showVideoControls(overlay);
             }
 
-            slide.appendChild(preloadedVideo);
+            return slide;
         } else {
             // Create new video element
             const video = document.createElement('video');
-            video.controls = true;
             video.loop = true;
             video.playsInline = true;
-            video.muted = true;
+            video.muted = videoMuted; // Apply user's mute preference
             video.preload = 'auto';
             video.setAttribute('aria-label', data.title);
             video.crossOrigin = 'anonymous';
@@ -286,6 +496,10 @@ function createSlideElement(data, position, slideIndex) {
                             // Update slide data for future use
                             data.url = url;
                             data.needsResolve = false;
+                            // Play if this is the active video
+                            if (position === 'active') {
+                                video.play().catch(() => {});
+                            }
                         } else {
                             video.poster = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle" fill="gray" font-size="8">Video unavailable</text></svg>';
                         }
@@ -295,7 +509,18 @@ function createSlideElement(data, position, slideIndex) {
                 video.src = data.url;
             }
 
+            // Add video controls overlay
+            const overlay = createVideoControlsOverlay(video);
             slide.appendChild(video);
+            slide.appendChild(overlay);
+            setupVideoTapHandler(slide, overlay);
+
+            // Explicitly call play() for active videos after appending to DOM
+            if (position === 'active') {
+                video.play().catch(() => {});
+                // Show controls briefly on active video
+                showVideoControls(overlay);
+            }
         }
     } else {
         const img = document.createElement('img');
@@ -725,6 +950,11 @@ if (typeof window !== 'undefined') {
         getElement,
         getActiveImage,
         getActiveVideo,
+        getBufferHealth,
+        pauseAllPreloads,
+        resumePreloads,
+        startBufferMonitoring,
+        stopBufferMonitoring,
         preloadVideoElement,
         getPreloadedVideo,
         cleanupOldPreloads,
@@ -760,6 +990,11 @@ export default {
     getElement,
     getActiveImage,
     getActiveVideo,
+    getBufferHealth,
+    pauseAllPreloads,
+    resumePreloads,
+    startBufferMonitoring,
+    stopBufferMonitoring,
     preloadVideoElement,
     getPreloadedVideo,
     cleanupOldPreloads,
