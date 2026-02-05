@@ -488,9 +488,20 @@ function createSlideElement(data, position, slideIndex) {
                     data.needsResolve = false;
                 } else {
                     // Need to resolve URL
+                    const preloadingInProgress = store.get('preloadingInProgress');
+
+                    // Mark as in-progress to prevent duplicate fetches from preloader
+                    preloadingInProgress.add(data.externalVideoId);
+
                     video.poster = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle" fill="white" font-size="12">Loading...</text></svg>';
                     fetchExternalVideoUrl(data.externalVideoId).then(url => {
+                        // Remove from in-progress
+                        preloadingInProgress.delete(data.externalVideoId);
+
                         if (url) {
+                            // Cache the URL for future use
+                            store.get('preloadedVideoUrls').set(data.externalVideoId, url);
+
                             console.log('Setting video src:', url);
                             video.src = url;
                             // Update slide data for future use
@@ -499,6 +510,7 @@ function createSlideElement(data, position, slideIndex) {
                             // Play if this is the active video
                             if (position === 'active') {
                                 video.play().catch(() => {});
+                                showVideoControls(overlay);
                             }
                         } else {
                             video.poster = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle" fill="gray" font-size="8">Video unavailable</text></svg>';
@@ -515,8 +527,9 @@ function createSlideElement(data, position, slideIndex) {
             slide.appendChild(overlay);
             setupVideoTapHandler(slide, overlay);
 
-            // Explicitly call play() for active videos after appending to DOM
-            if (position === 'active') {
+            // Explicitly call play() for active videos - but only if src is already set
+            // (External videos with needsResolve handle play() in their async callback)
+            if (position === 'active' && video.src) {
                 video.play().catch(() => {});
                 // Show controls briefly on active video
                 showVideoControls(overlay);
