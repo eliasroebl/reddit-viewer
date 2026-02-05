@@ -25,10 +25,12 @@ import {
     updateAutoplayButton,
     updateNSFWToggle,
     applyZoomTransform,
-    setImageDragging
+    setImageDragging,
+    cleanupOldPreloads,
+    preloadUpcomingVideos
 } from './ui.js';
 import { fetchPosts } from './api.js';
-import { extractMediaFromPosts } from './media.js';
+import { extractMediaFromPosts, preloadExternalVideoUrls } from './media.js';
 
 /**
  * Event controller for managing all event listeners
@@ -88,8 +90,11 @@ export function navigate(direction) {
     updateSlides();
     updateUI();
 
-    // Preload upcoming images
-    preloadUpcomingImages();
+    // Preload upcoming media (images and videos)
+    preloadUpcomingMedia();
+
+    // Cleanup old preloaded videos to free memory
+    cleanupOldPreloads(newIdx);
 
     // Check if we need to load more posts
     if (stateHelpers.shouldPreloadPosts()) {
@@ -98,13 +103,15 @@ export function navigate(direction) {
 }
 
 /**
- * Preloads upcoming images for smoother navigation
+ * Preloads upcoming media (images and videos) for smoother navigation
+ * This is the main preloading orchestration function
  */
-function preloadUpcomingImages() {
+function preloadUpcomingMedia() {
     const slides = store.get('slides');
     const currentIndex = store.get('currentIndex');
     const preloadedImages = store.get('preloadedImages');
 
+    // 1. Preload upcoming images (existing behavior)
     for (let i = 1; i <= CONFIG.slideshow.PRELOAD_COUNT; i++) {
         const idx = currentIndex + i;
         if (idx >= slides.length) break;
@@ -116,6 +123,34 @@ function preloadUpcomingImages() {
             preloadedImages.add(data.url);
         }
     }
+
+    // 2. Pre-resolve external video URLs (Layer 1: URL Resolution Cache)
+    preloadExternalVideoUrls(slides, currentIndex + 1, CONFIG.preloading.URL_PRELOAD_COUNT);
+
+    // 3. Preload video elements for upcoming slides (Layer 2: Video Element Preloading)
+    // Use a small delay to let URL resolution happen first
+    setTimeout(() => {
+        preloadUpcomingVideos(slides, currentIndex);
+    }, 100);
+}
+
+/**
+ * Triggers initial preloading after slides are loaded
+ * Call this after loadSubreddit completes
+ */
+export function triggerInitialPreload() {
+    const slides = store.get('slides');
+    const currentIndex = store.get('currentIndex');
+
+    if (slides.length === 0) return;
+
+    // Pre-resolve external video URLs for first several slides
+    preloadExternalVideoUrls(slides, currentIndex, CONFIG.preloading.URL_PRELOAD_COUNT);
+
+    // After a delay, preload video elements
+    setTimeout(() => {
+        preloadUpcomingVideos(slides, currentIndex);
+    }, 500);
 }
 
 /**
@@ -682,6 +717,7 @@ if (typeof window !== 'undefined') {
         toggleAutoplay,
         setAutoplaySpeed,
         toggleNSFW,
+        triggerInitialPreload,
         initEventListeners,
         cleanupEventListeners,
         getEventListenerCount
@@ -698,6 +734,7 @@ export default {
     toggleAutoplay,
     setAutoplaySpeed,
     toggleNSFW,
+    triggerInitialPreload,
     initEventListeners,
     cleanupEventListeners,
     getEventListenerCount

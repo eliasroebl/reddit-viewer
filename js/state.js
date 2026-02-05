@@ -86,7 +86,12 @@ const initialState = {
     panStartY: 0,
 
     // Preload cache
-    preloadedImages: new Set()
+    preloadedImages: new Set(),
+
+    // Video preloading cache (TikTok-style instant playback)
+    preloadedVideoUrls: new Map(),   // videoId → resolved URL
+    preloadedVideos: new Map(),       // slideIndex → { element, url, timestamp }
+    preloadingInProgress: new Set()   // videoIds currently being resolved
 };
 
 /**
@@ -157,14 +162,24 @@ function createStore(initial) {
                 const updates = {};
                 keys.forEach(key => {
                     if (key in initial) {
-                        updates[key] = key === 'preloadedImages'
-                            ? new Set()
-                            : initial[key];
+                        if (key === 'preloadedImages' || key === 'preloadingInProgress') {
+                            updates[key] = new Set();
+                        } else if (key === 'preloadedVideoUrls' || key === 'preloadedVideos') {
+                            updates[key] = new Map();
+                        } else {
+                            updates[key] = initial[key];
+                        }
                     }
                 });
                 this.setState(updates);
             } else {
-                state = { ...initial, preloadedImages: new Set() };
+                state = {
+                    ...initial,
+                    preloadedImages: new Set(),
+                    preloadedVideoUrls: new Map(),
+                    preloadedVideos: new Map(),
+                    preloadingInProgress: new Set()
+                };
                 listeners.forEach(fn => fn(state, initial));
             }
         },
@@ -277,6 +292,9 @@ const stateHelpers = {
             loading: true
         });
         store.get('preloadedImages').clear();
+        store.get('preloadedVideoUrls').clear();
+        store.get('preloadedVideos').clear();
+        store.get('preloadingInProgress').clear();
     }
 };
 

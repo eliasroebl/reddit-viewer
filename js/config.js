@@ -62,6 +62,23 @@ const CONFIG = Object.freeze({
     },
 
     /**
+     * Video Preloading Configuration (TikTok-style instant playback)
+     */
+    preloading: {
+        /** How many external video URLs to resolve ahead */
+        URL_PRELOAD_COUNT: 5,
+
+        /** How many video elements to buffer ahead */
+        VIDEO_PRELOAD_COUNT: 2,
+
+        /** Clean up videos this many slides behind current */
+        CLEANUP_THRESHOLD: 3,
+
+        /** Maximum videos in cache (memory limit) */
+        MAX_CACHED_VIDEOS: 5
+    },
+
+    /**
      * Zoom Configuration
      */
     zoom: {

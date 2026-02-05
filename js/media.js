@@ -10,6 +10,7 @@
 import CONFIG from './config.js';
 import { decodeHtmlEntities, createRedditUrl, isDirectImageUrl, isRedditImageUrl } from './utils.js';
 import { fetchViaWorkerProxy } from './api.js';
+import { store } from './state.js';
 
 /**
  * @typedef {Object} ExtractedMedia
@@ -355,6 +356,60 @@ export async function fetchExternalVideoUrl(id) {
 }
 
 /**
+ * Pre-resolves external video URLs for upcoming slides
+ * This eliminates the "Loading..." delay when navigating to external videos
+ *
+ * @param {Array} slides - Array of slide objects
+ * @param {number} startIndex - Index to start preloading from
+ * @param {number} count - Number of slides to preload
+ */
+export async function preloadExternalVideoUrls(slides, startIndex, count) {
+    const preloadedVideoUrls = store.get('preloadedVideoUrls');
+    const preloadingInProgress = store.get('preloadingInProgress');
+
+    for (let i = 0; i < count; i++) {
+        const idx = startIndex + i;
+        if (idx >= slides.length) break;
+
+        const slide = slides[idx];
+
+        // Only preload external videos that need resolution
+        if (!slide.needsResolve || !slide.externalVideoId) continue;
+
+        const videoId = slide.externalVideoId;
+
+        // Skip if already cached or currently preloading
+        if (preloadedVideoUrls.has(videoId) || preloadingInProgress.has(videoId)) continue;
+
+        // Mark as in progress
+        preloadingInProgress.add(videoId);
+
+        // Resolve URL in background (don't await - let it run async)
+        fetchExternalVideoUrl(videoId).then(url => {
+            if (url) {
+                preloadedVideoUrls.set(videoId, url);
+                console.log(`Preloaded external video URL for ${videoId}`);
+            }
+            preloadingInProgress.delete(videoId);
+        }).catch(err => {
+            console.warn(`Failed to preload external video URL for ${videoId}:`, err);
+            preloadingInProgress.delete(videoId);
+        });
+    }
+}
+
+/**
+ * Gets a preloaded video URL if available
+ *
+ * @param {string} videoId - External video ID
+ * @returns {string|null} Cached URL or null
+ */
+export function getPreloadedVideoUrl(videoId) {
+    const preloadedVideoUrls = store.get('preloadedVideoUrls');
+    return preloadedVideoUrls.get(videoId) || null;
+}
+
+/**
  * Extracts media from external video provider URLs
  *
  * @param {string} url - External URL
@@ -606,6 +661,8 @@ if (typeof window !== 'undefined') {
         extractMediaFromPosts,
         extractExternalMedia,
         fetchExternalVideoUrl,
+        preloadExternalVideoUrls,
+        getPreloadedVideoUrl,
         preloadImage,
         preloadImages,
         getMediaType
@@ -617,6 +674,8 @@ export default {
     extractMediaFromPosts,
     extractExternalMedia,
     fetchExternalVideoUrl,
+    preloadExternalVideoUrls,
+    getPreloadedVideoUrl,
     preloadImage,
     preloadImages,
     getMediaType

@@ -10,7 +10,7 @@
 import CONFIG from './config.js';
 import { store } from './state.js';
 import { escapeHtml, formatSlideCount } from './utils.js';
-import { fetchExternalVideoUrl } from './media.js';
+import { fetchExternalVideoUrl, getPreloadedVideoUrl } from './media.js';
 
 /**
  * Cached DOM element references
@@ -79,57 +79,224 @@ export function getActiveVideo() {
 }
 
 /**
+ * Preloads a video element for a given slide
+ * Creates a hidden video element that starts buffering immediately
+ *
+ * @param {Object} slideData - Slide data object
+ * @param {number} slideIndex - Index of the slide
+ * @param {string} videoUrl - Resolved video URL
+ */
+export function preloadVideoElement(slideData, slideIndex, videoUrl) {
+    const preloadedVideos = store.get('preloadedVideos');
+
+    // Skip if already preloaded or at max capacity
+    if (preloadedVideos.has(slideIndex)) return;
+    if (preloadedVideos.size >= CONFIG.preloading.MAX_CACHED_VIDEOS) return;
+
+    const video = document.createElement('video');
+    video.src = videoUrl;
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.loop = true;
+    video.crossOrigin = 'anonymous';
+
+    // Position off-screen to trigger loading without display
+    video.style.position = 'absolute';
+    video.style.left = '-9999px';
+    video.style.width = '1px';
+    video.style.height = '1px';
+
+    // Track when video is ready
+    video.addEventListener('canplaythrough', () => {
+        console.log(`Video preloaded for slide ${slideIndex}`);
+    }, { once: true });
+
+    video.addEventListener('error', () => {
+        console.warn(`Failed to preload video for slide ${slideIndex}`);
+        preloadedVideos.delete(slideIndex);
+        video.remove();
+    }, { once: true });
+
+    // Add to DOM to trigger loading
+    document.body.appendChild(video);
+
+    // Store in cache
+    preloadedVideos.set(slideIndex, {
+        element: video,
+        url: videoUrl,
+        timestamp: Date.now()
+    });
+
+    console.log(`Started preloading video for slide ${slideIndex}`);
+}
+
+/**
+ * Gets a preloaded video element if available
+ *
+ * @param {number} slideIndex - Index of the slide
+ * @returns {HTMLVideoElement|null} Preloaded video element or null
+ */
+export function getPreloadedVideo(slideIndex) {
+    const preloadedVideos = store.get('preloadedVideos');
+    const cached = preloadedVideos.get(slideIndex);
+
+    if (cached) {
+        // Remove from cache (it will be used)
+        preloadedVideos.delete(slideIndex);
+
+        // Remove from off-screen position
+        const video = cached.element;
+        video.style.position = '';
+        video.style.left = '';
+        video.style.width = '';
+        video.style.height = '';
+
+        return video;
+    }
+
+    return null;
+}
+
+/**
+ * Cleans up preloaded videos that are too far behind current position
+ *
+ * @param {number} currentIndex - Current slide index
+ */
+export function cleanupOldPreloads(currentIndex) {
+    const preloadedVideos = store.get('preloadedVideos');
+    const threshold = CONFIG.preloading.CLEANUP_THRESHOLD;
+
+    for (const [slideIndex, cached] of preloadedVideos.entries()) {
+        // Remove videos that are too far behind
+        if (slideIndex < currentIndex - threshold) {
+            cached.element.src = '';
+            cached.element.remove();
+            preloadedVideos.delete(slideIndex);
+            console.log(`Cleaned up preloaded video for slide ${slideIndex}`);
+        }
+    }
+}
+
+/**
+ * Preloads video elements for upcoming slides
+ *
+ * @param {Array} slides - Array of slide objects
+ * @param {number} currentIndex - Current slide index
+ */
+export async function preloadUpcomingVideos(slides, currentIndex) {
+    const preloadedVideoUrls = store.get('preloadedVideoUrls');
+    const count = CONFIG.preloading.VIDEO_PRELOAD_COUNT;
+
+    for (let i = 1; i <= count; i++) {
+        const idx = currentIndex + i;
+        if (idx >= slides.length) break;
+
+        const slide = slides[idx];
+        if (slide.type !== 'video') continue;
+
+        let videoUrl = slide.url;
+
+        // For external videos, check if URL is resolved
+        if (slide.needsResolve && slide.externalVideoId) {
+            const cachedUrl = preloadedVideoUrls.get(slide.externalVideoId);
+            if (cachedUrl) {
+                videoUrl = cachedUrl;
+            } else {
+                // URL not resolved yet, skip for now
+                continue;
+            }
+        }
+
+        if (videoUrl) {
+            preloadVideoElement(slide, idx, videoUrl);
+        }
+    }
+}
+
+/**
  * Creates a slide element for the slideshow
  *
  * @param {Object} data - Slide data
  * @param {string} position - Slide position (prev, active, next)
+ * @param {number} slideIndex - Index of this slide in the slides array
  * @returns {HTMLElement} Slide element
  * @private
  */
-function createSlideElement(data, position) {
+function createSlideElement(data, position, slideIndex) {
     const slide = document.createElement('div');
     slide.className = `slide ${position}`;
     slide.setAttribute('role', 'group');
     slide.setAttribute('aria-label', `Slide: ${data.title}`);
 
     if (data.type === 'video') {
-        const video = document.createElement('video');
-        video.controls = true;
-        video.loop = true;
-        video.playsInline = true;
-        video.muted = true;
-        video.preload = 'auto';
-        video.setAttribute('aria-label', data.title);
-        video.crossOrigin = 'anonymous';
+        // Check for preloaded video element first
+        const preloadedVideo = getPreloadedVideo(slideIndex);
 
-        // Add error handling for debugging
-        video.onerror = (e) => {
-            console.error('Video error:', video.error?.message || 'Unknown error', 'Code:', video.error?.code, 'URL:', video.src);
-        };
+        if (preloadedVideo) {
+            // Use the preloaded video (already buffered!)
+            console.log(`Using preloaded video for slide ${slideIndex}`);
+            preloadedVideo.controls = true;
+            preloadedVideo.setAttribute('aria-label', data.title);
 
-        if (position === 'active') {
-            video.autoplay = true;
-        }
+            if (position === 'active') {
+                preloadedVideo.autoplay = true;
+                preloadedVideo.play().catch(() => {});
+            }
 
-        // Handle external videos that need URL resolution
-        if (data.needsResolve && data.externalVideoId) {
-            video.poster = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle" fill="white" font-size="12">Loading...</text></svg>';
-            fetchExternalVideoUrl(data.externalVideoId).then(url => {
-                if (url) {
-                    console.log('Setting video src:', url);
-                    video.src = url;
-                    // Update slide data for future use
-                    data.url = url;
+            slide.appendChild(preloadedVideo);
+        } else {
+            // Create new video element
+            const video = document.createElement('video');
+            video.controls = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.muted = true;
+            video.preload = 'auto';
+            video.setAttribute('aria-label', data.title);
+            video.crossOrigin = 'anonymous';
+
+            // Add error handling for debugging
+            video.onerror = (e) => {
+                console.error('Video error:', video.error?.message || 'Unknown error', 'Code:', video.error?.code, 'URL:', video.src);
+            };
+
+            if (position === 'active') {
+                video.autoplay = true;
+            }
+
+            // Handle external videos that need URL resolution
+            if (data.needsResolve && data.externalVideoId) {
+                // Check if URL was preloaded
+                const preloadedUrl = getPreloadedVideoUrl(data.externalVideoId);
+
+                if (preloadedUrl) {
+                    // URL already resolved - use it immediately!
+                    console.log(`Using preloaded URL for ${data.externalVideoId}`);
+                    video.src = preloadedUrl;
+                    data.url = preloadedUrl;
                     data.needsResolve = false;
                 } else {
-                    video.poster = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle" fill="gray" font-size="8">Video unavailable</text></svg>';
+                    // Need to resolve URL
+                    video.poster = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle" fill="white" font-size="12">Loading...</text></svg>';
+                    fetchExternalVideoUrl(data.externalVideoId).then(url => {
+                        if (url) {
+                            console.log('Setting video src:', url);
+                            video.src = url;
+                            // Update slide data for future use
+                            data.url = url;
+                            data.needsResolve = false;
+                        } else {
+                            video.poster = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" x="50" text-anchor="middle" fill="gray" font-size="8">Video unavailable</text></svg>';
+                        }
+                    });
                 }
-            });
-        } else {
-            video.src = data.url;
-        }
+            } else {
+                video.src = data.url;
+            }
 
-        slide.appendChild(video);
+            slide.appendChild(video);
+        }
     } else {
         const img = document.createElement('img');
         img.src = data.url;
@@ -171,7 +338,7 @@ export function updateSlides() {
         if (idx < 0 || idx >= slides.length) return;
 
         const data = slides[idx];
-        const slide = createSlideElement(data, positions[i]);
+        const slide = createSlideElement(data, positions[i], idx);
         container.appendChild(slide);
     });
 }
@@ -558,6 +725,10 @@ if (typeof window !== 'undefined') {
         getElement,
         getActiveImage,
         getActiveVideo,
+        preloadVideoElement,
+        getPreloadedVideo,
+        cleanupOldPreloads,
+        preloadUpcomingVideos,
         updateSlides,
         updateUI,
         renderSlideshow,
@@ -589,6 +760,10 @@ export default {
     getElement,
     getActiveImage,
     getActiveVideo,
+    preloadVideoElement,
+    getPreloadedVideo,
+    cleanupOldPreloads,
+    preloadUpcomingVideos,
     updateSlides,
     updateUI,
     renderSlideshow,

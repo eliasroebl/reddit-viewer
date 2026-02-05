@@ -31,7 +31,8 @@ import {
     initEventListeners,
     cleanupEventListeners,
     stopAutoplay,
-    resetZoom
+    resetZoom,
+    triggerInitialPreload
 } from './controls.js';
 import { initAutocomplete, destroyAutocomplete } from './autocomplete.js';
 
@@ -95,6 +96,9 @@ async function loadSubreddit(subreddit) {
         loading: true
     });
     store.get('preloadedImages').clear();
+    store.get('preloadedVideoUrls').clear();
+    store.get('preloadedVideos').clear();
+    store.get('preloadingInProgress').clear();
 
     // Update UI
     setLoadButtonDisabled(true);
@@ -134,6 +138,9 @@ async function loadSubreddit(subreddit) {
                 store.setState({ firstLoad: false });
                 showNavHint();
             }
+
+            // Trigger preloading for upcoming videos (TikTok-style instant playback)
+            triggerInitialPreload();
 
             // Save preferences
             savePreferences();
