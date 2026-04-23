@@ -26,7 +26,8 @@ const IG_HOST = 'i.instagram.com';
 
 const IG_USERNAME_RE = /^[a-zA-Z0-9_.]{1,30}$/;
 const IG_USER_ID_RE = /^\d{1,20}$/;
-const IG_MAX_ID_RE = /^[a-zA-Z0-9_=-]{1,200}$/;
+// Instagram pagination cursors vary in format (numeric, base64, base64url); allow any printable ASCII
+const IG_MAX_ID_RE = /^[\x21-\x7e]{1,500}$/;
 
 // Hosts allowed for generic ?url= passthrough
 const ALLOWED_HOSTS = ['old.reddit.com', 'www.reddit.com', _xva(), _xvm(), IG_HOST];

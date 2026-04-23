@@ -362,6 +362,7 @@ export async function fetchInstagramNextPage(userId, maxId) {
 
         // Any non-2xx during pagination is a soft failure: stop paginating gracefully
         if (!response.ok) {
+            console.warn('[IG pagination] HTTP', response.status, data);
             return { items: [], itemFormat: 'v1', moreAvailable: false, nextMaxId: null };
         }
 
