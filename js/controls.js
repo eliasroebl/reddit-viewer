@@ -20,6 +20,7 @@ import {
     showUI,
     hideUI,
     showSwipeFeedback,
+    showEndOfFeedHint,
     showZoomIndicator,
     updateFullscreenButton,
     updateAutoplayButton,
@@ -73,7 +74,22 @@ export function navigate(direction) {
     const newIdx = currentIndex + direction;
 
     // Check bounds
-    if (newIdx < 0 || newIdx >= slides.length) return;
+    if (newIdx < 0 || newIdx >= slides.length) {
+        // Hitting the end while pagination is exhausted: let the user know
+        if (direction > 0 && newIdx >= slides.length && !store.get('loading')) {
+            const provider = store.get('provider');
+            const hasMore = provider === 'instagram'
+                ? store.get('igMoreAvailable')
+                : store.get('after') !== null;
+            if (!hasMore) {
+                const message = provider === 'instagram'
+                    ? 'Keine weiteren Posts verfügbar'
+                    : 'Ende des Feeds erreicht';
+                showEndOfFeedHint(message);
+            }
+        }
+        return;
+    }
 
     // Reset zoom when navigating
     resetZoom();
@@ -188,12 +204,22 @@ async function loadMorePosts() {
             const { items, itemFormat, moreAvailable, nextMaxId } =
                 await fetchInstagramNextPage(state.igUserId, state.igNextMaxId);
             const newSlides = extractInstagramMedia(items, state.subreddit, itemFormat);
+            const exhausted = newSlides.length === 0 || !moreAvailable || !nextMaxId;
             store.setState({
                 slides: [...state.slides, ...newSlides],
                 igNextMaxId: nextMaxId,
                 igMoreAvailable: moreAvailable && !!nextMaxId,
                 loading: false
             });
+
+            // If the user is already near the end and we got nothing more, notify them
+            if (exhausted) {
+                const slides = store.get('slides');
+                const index = store.get('currentIndex');
+                if (slides.length - index <= 1) {
+                    showEndOfFeedHint('Keine weiteren Posts verfügbar');
+                }
+            }
         } else {
             const { posts, after } = await fetchPosts({
                 subreddit: state.subreddit,

@@ -249,6 +249,7 @@ const CONFIG = Object.freeze({
         POST_META: 'postMeta',
         GALLERY_DOTS: 'galleryDots',
         NAV_HINT: 'navHint',
+        END_OF_FEED_HINT: 'endOfFeedHint',
         TOUCH_LEFT: 'touchLeft',
         TOUCH_CENTER: 'touchCenter',
         TOUCH_RIGHT: 'touchRight',

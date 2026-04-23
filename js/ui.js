@@ -858,6 +858,27 @@ export function showNavHint() {
     }
 }
 
+/** Timer for the end-of-feed toast */
+let endOfFeedTimer = null;
+
+/**
+ * Shows a toast-style hint that the feed has no more posts.
+ *
+ * @param {string} [message] - Custom message
+ */
+export function showEndOfFeedHint(message = 'Keine weiteren Posts verfügbar') {
+    if (!elements.endOfFeedHint) return;
+
+    elements.endOfFeedHint.textContent = message;
+    elements.endOfFeedHint.classList.add('show');
+
+    if (endOfFeedTimer) clearTimeout(endOfFeedTimer);
+    endOfFeedTimer = setTimeout(() => {
+        elements.endOfFeedHint.classList.remove('show');
+        endOfFeedTimer = null;
+    }, 2500);
+}
+
 /**
  * Shows the zoom indicator
  *
@@ -998,6 +1019,7 @@ if (typeof window !== 'undefined') {
         hideError,
         showSwipeFeedback,
         showNavHint,
+        showEndOfFeedHint,
         showZoomIndicator,
         updateFullscreenButton,
         updateAutoplayButton,
