@@ -28,9 +28,20 @@
 
     <!-- Header / Controls -->
     <header class="header" id="header" role="banner">
-        <form class="top-row" id="subredditForm" role="search" aria-label="Subreddit search">
+        <form class="top-row" id="subredditForm" role="search" aria-label="Content search">
+            <label for="providerSelect" class="sr-only">Content source</label>
+            <select
+                class="provider-select"
+                id="providerSelect"
+                aria-label="Content source"
+                title="Content source"
+            >
+                <option value="reddit">Reddit</option>
+                <option value="instagram">Instagram</option>
+            </select>
+
             <div class="subreddit-input-wrapper">
-                <label for="subredditInput" class="sr-only">Subreddit name</label>
+                <label for="subredditInput" class="sr-only">Subreddit or Instagram username</label>
                 <input
                     type="text"
                     class="subreddit-input"
@@ -47,7 +58,7 @@
                     aria-autocomplete="list"
                     role="combobox"
                 >
-                <span id="subredditHint" class="sr-only">Enter a subreddit name. Use + to combine multiple subreddits.</span>
+                <span id="subredditHint" class="sr-only">Enter a subreddit name (use + to combine) or Instagram username.</span>
                 <div
                     class="autocomplete-dropdown"
                     id="autocompleteDropdown"
@@ -74,7 +85,7 @@
             >⛶</button>
         </form>
 
-        <div class="sort-row" role="toolbar" aria-label="Sort and filter options">
+        <div class="sort-row" id="sortRow" role="toolbar" aria-label="Sort and filter options">
             <button
                 class="sort-btn active"
                 data-sort="hot"
@@ -171,7 +182,7 @@
     >
         <div class="empty-state" id="emptyState" role="status">
             <h2>Reddit Viewer</h2>
-            <p>Enter a subreddit to start browsing</p>
+            <p>Enter a subreddit or Instagram username to start browsing</p>
         </div>
     </main>
 

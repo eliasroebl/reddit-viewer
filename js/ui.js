@@ -208,7 +208,10 @@ export function preloadVideoElement(slideData, slideIndex, videoUrl) {
     video.muted = true;
     video.playsInline = true;
     video.loop = true;
-    video.crossOrigin = 'anonymous';
+    // Instagram CDN doesn't reliably send CORS headers; skip crossOrigin for IG to avoid playback failures
+    if (slideData?.source !== 'instagram') {
+        video.crossOrigin = 'anonymous';
+    }
 
     // Position off-screen to trigger loading without display
     video.style.position = 'absolute';
@@ -464,7 +467,9 @@ function createSlideElement(data, position, slideIndex) {
             video.muted = videoMuted; // Apply user's mute preference
             video.preload = 'auto';
             video.setAttribute('aria-label', data.title);
-            video.crossOrigin = 'anonymous';
+            if (data.source !== 'instagram') {
+                video.crossOrigin = 'anonymous';
+            }
 
             // Add error handling for debugging
             video.onerror = (e) => {
@@ -612,7 +617,10 @@ export function updateUI() {
 
     // Update meta info
     if (elements.postMeta) {
-        let meta = `r/${escapeHtml(data.subreddit)}`;
+        const handle = data.source === 'instagram'
+            ? `@${escapeHtml(data.subreddit)}`
+            : `r/${escapeHtml(data.subreddit)}`;
+        let meta = handle;
 
         // Gallery indicator
         if (data.isGallery) {
@@ -777,7 +785,7 @@ export function showWelcomeState() {
         elements.emptyState.innerHTML = `
             <div class="empty-state">
                 <h2>Reddit Viewer</h2>
-                <p>Enter a subreddit to start browsing</p>
+                <p>Enter a subreddit or Instagram username to start browsing</p>
             </div>
         `;
     }
@@ -804,7 +812,11 @@ export function showError(message) {
         elements.error.setAttribute('role', 'alert');
     }
 
-    showEmptyState('Error', 'Could not load subreddit');
+    const provider = store.get('provider');
+    const subtitle = provider === 'instagram'
+        ? 'Could not load Instagram profile'
+        : 'Could not load subreddit';
+    showEmptyState('Error', subtitle);
 }
 
 /**
