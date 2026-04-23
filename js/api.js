@@ -348,6 +348,8 @@ export async function fetchInstagramProfile(username) {
 
 /**
  * Fetches the next page of an Instagram user's feed via the Worker.
+ * Retries with exponential backoff on transient errors (429/502/503)
+ * before silently signalling "no more posts".
  *
  * @param {string} userId - Instagram numeric user ID
  * @param {string} maxId - Pagination cursor from previous response
@@ -355,27 +357,46 @@ export async function fetchInstagramProfile(username) {
  */
 export async function fetchInstagramNextPage(userId, maxId) {
     const proxyUrl = `${CONFIG.proxy.URL}?ig_feed=${encodeURIComponent(userId)}&max_id=${encodeURIComponent(maxId || '')}`;
+    const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
+    const MAX_ATTEMPTS = 3;
+    const EMPTY = { items: [], itemFormat: 'v1', moreAvailable: false, nextMaxId: null };
 
-    try {
-        const response = await fetch(proxyUrl);
-        const data = await response.json().catch(() => ({}));
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+            const response = await fetch(proxyUrl);
+            const data = await response.json().catch(() => ({}));
 
-        // Any non-2xx during pagination is a soft failure: stop paginating gracefully
-        if (!response.ok) {
+            if (response.ok) {
+                return {
+                    items: data.items || [],
+                    itemFormat: data.item_format || 'v1',
+                    moreAvailable: !!data.more_available,
+                    nextMaxId: data.next_max_id || null
+                };
+            }
+
+            const retriable = RETRY_STATUSES.has(response.status);
+            if (retriable && attempt < MAX_ATTEMPTS - 1) {
+                const delay = CONFIG.api.RETRY_BASE_DELAY * Math.pow(2, attempt + 1);
+                console.warn(`[IG pagination] HTTP ${response.status}, retry ${attempt + 1}/${MAX_ATTEMPTS - 1} in ${delay}ms`);
+                await sleep(delay);
+                continue;
+            }
+
             console.warn('[IG pagination] HTTP', response.status, data);
-            return { items: [], itemFormat: 'v1', moreAvailable: false, nextMaxId: null };
+            return EMPTY;
+        } catch (error) {
+            if (attempt < MAX_ATTEMPTS - 1) {
+                const delay = CONFIG.api.RETRY_BASE_DELAY * Math.pow(2, attempt + 1);
+                console.warn(`[IG pagination] Network error, retry ${attempt + 1}/${MAX_ATTEMPTS - 1} in ${delay}ms:`, error);
+                await sleep(delay);
+                continue;
+            }
+            console.warn('[IG pagination] Network error (exhausted):', error);
+            return EMPTY;
         }
-
-        return {
-            items: data.items || [],
-            itemFormat: data.item_format || 'v1',
-            moreAvailable: !!data.more_available,
-            nextMaxId: data.next_max_id || null
-        };
-    } catch (error) {
-        console.warn('Instagram pagination failed:', error);
-        return { items: [], itemFormat: 'v1', moreAvailable: false, nextMaxId: null };
     }
+    return EMPTY;
 }
 
 /**

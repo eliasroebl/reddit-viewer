@@ -702,6 +702,29 @@ body {
     opacity: 0.6;
 }
 
+.end-of-feed-hint {
+    position: fixed;
+    left: 50%;
+    bottom: 90px;
+    transform: translateX(-50%);
+    padding: 10px 18px;
+    background: rgba(20, 20, 20, 0.9);
+    color: var(--color-text);
+    font-size: var(--font-size-base);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    z-index: var(--z-nav-hint);
+    max-width: calc(100vw - 32px);
+    text-align: center;
+}
+
+.end-of-feed-hint.show {
+    opacity: 1;
+}
+
 /* Swipe animation feedback */
 .swipe-feedback {
     position: fixed;
