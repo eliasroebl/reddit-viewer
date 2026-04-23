@@ -146,6 +146,41 @@ body {
     align-items: center;
 }
 
+.provider-select {
+    flex-shrink: 0;
+    height: 40px;
+    padding: 0 var(--spacing-md);
+    border: none;
+    border-radius: var(--radius-xl);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: var(--font-size-md, 14px);
+    font-weight: 500;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 28px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(255,255,255,0.6)' d='M0 0l5 6 5-6z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    transition: background-color var(--transition-normal);
+}
+
+.provider-select:hover {
+    background-color: var(--color-surface-hover);
+}
+
+.provider-select:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.sort-row.provider-instagram .sort-btn,
+.sort-row.provider-instagram .time-select {
+    display: none;
+}
+
 .subreddit-input {
     flex: 1;
     padding: 10px var(--spacing-xl);

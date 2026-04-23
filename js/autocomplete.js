@@ -285,6 +285,12 @@ function selectSubreddit(name) {
  * Handles input changes
  */
 const handleInput = debounce(async () => {
+    // Autocomplete is Reddit-specific; skip entirely for Instagram
+    if (typeof window !== 'undefined' && window.store?.get('provider') === 'instagram') {
+        hideDropdown();
+        return;
+    }
+
     const { searchTerm } = extractSearchTerm(elements.input.value);
     state.currentQuery = searchTerm;
 

@@ -507,6 +507,151 @@ export function extractExternalMedia(url, base) {
 }
 
 /**
+ * Builds a base slide object for an Instagram post.
+ * @private
+ */
+function createInstagramBase(shortcode, caption, username) {
+    const title = (caption || '').split('\n')[0].slice(0, 200) || `@${username}`;
+    return {
+        postId: shortcode || '',
+        title,
+        permalink: shortcode ? `https://www.instagram.com/p/${shortcode}/` : `https://www.instagram.com/${username}/`,
+        author: username,
+        subreddit: username,  // reused by UI as display handle
+        isNSFW: false,
+        source: 'instagram'
+    };
+}
+
+/**
+ * Picks the best image URL from an image_versions2 candidates array.
+ * @private
+ */
+function pickBestImage(candidates) {
+    if (!Array.isArray(candidates) || candidates.length === 0) return null;
+    // Candidates are usually sorted largest-first; pick the first
+    return candidates[0]?.url || null;
+}
+
+/**
+ * Picks the best video URL from video_versions array.
+ * @private
+ */
+function pickBestVideo(versions) {
+    if (!Array.isArray(versions) || versions.length === 0) return null;
+    // Prefer highest bitrate (first entry is usually highest)
+    return versions[0]?.url || null;
+}
+
+/**
+ * Converts a single v1-format Instagram media item (from /feed/user/) to slide(s).
+ * media_type: 1=image, 2=video, 8=carousel
+ * @private
+ */
+function extractInstagramV1Item(item, username) {
+    const shortcode = item.code;
+    const caption = item.caption?.text || '';
+    const base = createInstagramBase(shortcode, caption, username);
+
+    if (item.media_type === 8 && Array.isArray(item.carousel_media)) {
+        const children = item.carousel_media;
+        const slides = [];
+        children.forEach((child, idx) => {
+            const childSlide = buildV1Slide(child, base);
+            if (childSlide) {
+                slides.push({
+                    ...childSlide,
+                    isGallery: true,
+                    galleryIndex: idx + 1,
+                    galleryTotal: children.length
+                });
+            }
+        });
+        return slides;
+    }
+
+    const slide = buildV1Slide(item, base);
+    return slide ? [slide] : [];
+}
+
+function buildV1Slide(media, base) {
+    // Video
+    if (media.media_type === 2) {
+        const videoUrl = pickBestVideo(media.video_versions);
+        if (!videoUrl) return null;
+        return { ...base, type: 'video', url: videoUrl };
+    }
+    // Image (media_type 1 or anything else with image_versions2)
+    const imgUrl = pickBestImage(media.image_versions2?.candidates);
+    if (!imgUrl) return null;
+    return { ...base, type: 'image', url: imgUrl };
+}
+
+/**
+ * Converts a single GraphQL-format Instagram media node (from web_profile_info) to slide(s).
+ * Used as a fallback when v1 feed is blocked.
+ * @private
+ */
+function extractInstagramGraphQLNode(node, username) {
+    const shortcode = node.shortcode;
+    const caption = node.edge_media_to_caption?.edges?.[0]?.node?.text || '';
+    const base = createInstagramBase(shortcode, caption, username);
+
+    const typename = node.__typename || (node.is_video ? 'GraphVideo' : 'GraphImage');
+
+    if (typename === 'GraphSidecar' && node.edge_sidecar_to_children?.edges) {
+        const children = node.edge_sidecar_to_children.edges;
+        const slides = [];
+        children.forEach((edge, idx) => {
+            const child = edge.node;
+            const childSlide = buildGraphQLSlide(child, base);
+            if (childSlide) {
+                slides.push({
+                    ...childSlide,
+                    isGallery: true,
+                    galleryIndex: idx + 1,
+                    galleryTotal: children.length
+                });
+            }
+        });
+        return slides;
+    }
+
+    const slide = buildGraphQLSlide(node, base);
+    return slide ? [slide] : [];
+}
+
+function buildGraphQLSlide(node, base) {
+    if (node.is_video && node.video_url) {
+        return { ...base, type: 'video', url: node.video_url };
+    }
+    if (node.display_url) {
+        return { ...base, type: 'image', url: node.display_url };
+    }
+    return null;
+}
+
+/**
+ * Extracts slides from an Instagram API response.
+ *
+ * @param {Array} items - Items from API (v1 or graphql format)
+ * @param {string} username - Profile username for permalink/author
+ * @param {string} [format='v1'] - 'v1' or 'graphql'
+ * @returns {Array<ExtractedMedia>} Array of slides (carousels become multiple slides)
+ */
+export function extractInstagramMedia(items, username, format = 'v1') {
+    if (!Array.isArray(items)) return [];
+    const slides = [];
+    for (const item of items) {
+        const extracted = format === 'graphql'
+            ? extractInstagramGraphQLNode(item, username)
+            : extractInstagramV1Item(item, username);
+        slides.push(...extracted);
+    }
+    return slides;
+}
+
+/**
  * Extracts all media from a Reddit post
  *
  * This function processes a post in priority order:
@@ -660,6 +805,7 @@ if (typeof window !== 'undefined') {
         extractMedia,
         extractMediaFromPosts,
         extractExternalMedia,
+        extractInstagramMedia,
         fetchExternalVideoUrl,
         preloadExternalVideoUrls,
         getPreloadedVideoUrl,
@@ -673,6 +819,7 @@ export default {
     extractMedia,
     extractMediaFromPosts,
     extractExternalMedia,
+    extractInstagramMedia,
     fetchExternalVideoUrl,
     preloadExternalVideoUrls,
     getPreloadedVideoUrl,

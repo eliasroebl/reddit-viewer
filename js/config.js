@@ -163,7 +163,10 @@ const CONFIG = Object.freeze({
         SHOW_NSFW: false,
 
         /** Whether UI is visible by default */
-        UI_VISIBLE: true
+        UI_VISIBLE: true,
+
+        /** Default content provider */
+        PROVIDER: 'reddit'
     },
 
     /**
@@ -190,7 +193,10 @@ const CONFIG = Object.freeze({
         EXTERNAL_VIDEO: new RegExp('(?:[a-z0-9]+\\.)?' + atob('cmVkZ2lmcw==') + '\\.com\\/(?:watch|ifr)\\/([\\w-]+)', 'i'),
 
         /** Pattern for Giphy URLs */
-        GIPHY: /giphy\.com\/(?:gifs|media)\/(?:.*-)?(\w+)/i
+        GIPHY: /giphy\.com\/(?:gifs|media)\/(?:.*-)?(\w+)/i,
+
+        /** Pattern for valid Instagram usernames */
+        INSTAGRAM_USERNAME: /^[a-zA-Z0-9_.]{1,30}$/
     },
 
     /**
@@ -229,6 +235,8 @@ const CONFIG = Object.freeze({
         HEADER: 'header',
         SUBREDDIT_FORM: 'subredditForm',
         SUBREDDIT_INPUT: 'subredditInput',
+        PROVIDER_SELECT: 'providerSelect',
+        SORT_ROW: 'sortRow',
         LOAD_BTN: 'loadBtn',
         FULLSCREEN_BTN: 'fullscreenBtn',
         TIME_SELECT: 'timeSelect',

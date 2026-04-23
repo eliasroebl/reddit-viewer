@@ -10,8 +10,8 @@
 import CONFIG from './config.js';
 import { store, stateHelpers } from './state.js';
 import { storage, parseSubredditInput } from './utils.js';
-import { fetchPosts } from './api.js';
-import { extractMediaFromPosts } from './media.js';
+import { fetchPosts, fetchInstagramProfile, isValidInstagramUsername, isValidSubreddit } from './api.js';
+import { extractMediaFromPosts, extractInstagramMedia } from './media.js';
 import {
     initElements,
     getElements,
@@ -37,6 +37,29 @@ import {
 import { initAutocomplete, destroyAutocomplete } from './autocomplete.js';
 
 /**
+ * Updates UI to match the currently selected provider
+ * (placeholder text, visibility of sort controls, dropdown value)
+ */
+function applyProviderUI(provider) {
+    const elements = getElements();
+
+    if (elements.providerSelect && elements.providerSelect.value !== provider) {
+        elements.providerSelect.value = provider;
+    }
+
+    if (elements.subredditInput) {
+        elements.subredditInput.placeholder = provider === 'instagram'
+            ? 'Instagram username (e.g. nasa)'
+            : 'pics+earthporn or subreddit...';
+    }
+
+    // Hide sort/time controls for Instagram (no server-side sort available)
+    if (elements.sortRow) {
+        elements.sortRow.classList.toggle('provider-instagram', provider === 'instagram');
+    }
+}
+
+/**
  * Loads user preferences from localStorage
  */
 function loadPreferences() {
@@ -55,12 +78,18 @@ function loadPreferences() {
         }
     }
 
+    if (prefs.provider === 'instagram' || prefs.provider === 'reddit') {
+        store.setState({ provider: prefs.provider });
+    }
+
     if (prefs.lastSubreddit) {
         const elements = getElements();
         if (elements.subredditInput) {
             elements.subredditInput.value = prefs.lastSubreddit;
         }
     }
+
+    applyProviderUI(store.get('provider'));
 }
 
 /**
@@ -72,6 +101,7 @@ function savePreferences() {
     storage.set(CONFIG.storage.PREFERENCES_KEY, {
         showNSFW: state.showNSFW,
         autoplaySpeed: state.autoplaySpeed,
+        provider: state.provider,
         lastSubreddit: state.subreddit
     });
 }
@@ -90,9 +120,13 @@ async function loadSubreddit(subreddit) {
     // Reset state for new load
     store.setState({
         subreddit,
+        provider: 'reddit',
         slides: [],
         currentIndex: 0,
         after: null,
+        igUserId: null,
+        igNextMaxId: null,
+        igMoreAvailable: false,
         loading: true
     });
     store.get('preloadedImages').clear();
@@ -155,7 +189,105 @@ async function loadSubreddit(subreddit) {
 }
 
 /**
- * Handles subreddit form submission
+ * Loads content from an Instagram profile
+ *
+ * @param {string} username - Instagram username (without @)
+ * @returns {Promise<void>}
+ */
+async function loadInstagram(username) {
+    stopAutoplay();
+    resetZoom();
+
+    store.setState({
+        subreddit: username,       // reused by UI for display purposes
+        provider: 'instagram',
+        slides: [],
+        currentIndex: 0,
+        after: null,
+        igUserId: null,
+        igNextMaxId: null,
+        igMoreAvailable: false,
+        loading: true
+    });
+    store.get('preloadedImages').clear();
+    store.get('preloadedVideoUrls').clear();
+    store.get('preloadedVideos').clear();
+    store.get('preloadingInProgress').clear();
+
+    setLoadButtonDisabled(true);
+    hideError();
+    showLoading();
+
+    try {
+        const { user, items, itemFormat, moreAvailable, nextMaxId } =
+            await fetchInstagramProfile(username);
+
+        const slides = extractInstagramMedia(items, user?.username || username, itemFormat);
+
+        store.setState({
+            slides,
+            igUserId: user?.id || null,
+            igNextMaxId: nextMaxId,
+            igMoreAvailable: moreAvailable,
+            loading: false
+        });
+
+        if (slides.length === 0) {
+            showEmptyState('No media found', `@${username} has no public media`);
+        } else {
+            hideEmptyState();
+            renderSlideshow();
+            showUI();
+
+            if (store.get('firstLoad')) {
+                store.setState({ firstLoad: false });
+                showNavHint();
+            }
+
+            triggerInitialPreload();
+            savePreferences();
+        }
+    } catch (error) {
+        console.error('Failed to load Instagram profile:', error);
+        store.setState({ loading: false });
+        const message = error.status === 404
+            ? 'Profile not found'
+            : error.status === 403
+            ? 'Profile is private or blocked'
+            : error.message || 'Failed to load Instagram profile';
+        showError(message);
+    } finally {
+        setLoadButtonDisabled(false);
+    }
+}
+
+/**
+ * Dispatches a load request to the correct provider
+ */
+function loadContent(rawInput) {
+    const provider = store.get('provider');
+    const cleaned = (rawInput || '').trim().replace(/^@/, '');
+
+    if (provider === 'instagram') {
+        const username = cleaned.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '');
+        if (!isValidInstagramUsername(username)) {
+            showError('Invalid Instagram username');
+            return;
+        }
+        loadInstagram(username);
+        return;
+    }
+
+    const subreddit = parseSubredditInput(rawInput);
+    if (!subreddit || !isValidSubreddit(subreddit)) {
+        showError('Invalid subreddit name');
+        return;
+    }
+    loadSubreddit(subreddit);
+}
+
+/**
+ * Handles form submission
  *
  * @param {Event} e - Form submit event
  */
@@ -164,11 +296,23 @@ function handleFormSubmit(e) {
 
     const elements = getElements();
     const rawInput = elements.subredditInput?.value || '';
-    const subreddit = parseSubredditInput(rawInput);
 
-    if (subreddit) {
-        loadSubreddit(subreddit);
+    if (rawInput.trim()) {
+        loadContent(rawInput);
     }
+}
+
+/**
+ * Handles provider dropdown changes
+ */
+function handleProviderChange() {
+    const elements = getElements();
+    if (!elements.providerSelect) return;
+
+    const provider = elements.providerSelect.value;
+    store.setState({ provider });
+    applyProviderUI(provider);
+    savePreferences();
 }
 
 /**
@@ -188,12 +332,20 @@ function init() {
         elements.subredditForm.addEventListener('submit', handleFormSubmit);
     }
 
+    // Provider dropdown
+    if (elements.providerSelect) {
+        elements.providerSelect.addEventListener('change', handleProviderChange);
+    }
+
     // Initialize all event listeners
     initEventListeners({
         onLoadSubreddit: () => {
-            const subreddit = store.get('subreddit');
-            if (subreddit) {
-                loadSubreddit(subreddit);
+            const target = store.get('subreddit');
+            if (!target) return;
+            if (store.get('provider') === 'instagram') {
+                loadInstagram(target);
+            } else {
+                loadSubreddit(target);
             }
         }
     });
@@ -255,6 +407,8 @@ export {
     init,
     cleanup,
     loadSubreddit,
+    loadInstagram,
+    loadContent,
     loadPreferences,
     savePreferences
 };
@@ -265,6 +419,8 @@ if (typeof window !== 'undefined') {
         init,
         cleanup,
         loadSubreddit,
+        loadInstagram,
+        loadContent,
         loadPreferences,
         savePreferences
     };
@@ -273,5 +429,7 @@ if (typeof window !== 'undefined') {
 export default {
     init,
     cleanup,
-    loadSubreddit
+    loadSubreddit,
+    loadInstagram,
+    loadContent
 };

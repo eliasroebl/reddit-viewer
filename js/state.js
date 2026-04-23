@@ -62,6 +62,14 @@ const initialState = {
     after: null,
     loading: false,
 
+    // Provider state (reddit | instagram)
+    provider: CONFIG.defaults.PROVIDER,
+
+    // Instagram pagination state (unused for Reddit)
+    igUserId: null,
+    igNextMaxId: null,
+    igMoreAvailable: false,
+
     // Sort & filter state
     sort: CONFIG.defaults.SORT,
     time: CONFIG.defaults.TIME,
@@ -251,14 +259,16 @@ const stateHelpers = {
     shouldPreloadPosts() {
         const slides = store.get('slides');
         const index = store.get('currentIndex');
-        const after = store.get('after');
         const loading = store.get('loading');
+        const provider = store.get('provider');
 
-        return (
-            slides.length - index < CONFIG.slideshow.PRELOAD_THRESHOLD &&
-            after !== null &&
-            !loading
-        );
+        if (loading) return false;
+        if (slides.length - index >= CONFIG.slideshow.PRELOAD_THRESHOLD) return false;
+
+        if (provider === 'instagram') {
+            return store.get('igMoreAvailable') && !!store.get('igNextMaxId');
+        }
+        return store.get('after') !== null;
     },
 
     /**
@@ -293,6 +303,9 @@ const stateHelpers = {
             slides: [],
             currentIndex: 0,
             after: null,
+            igUserId: null,
+            igNextMaxId: null,
+            igMoreAvailable: false,
             loading: true
         });
         store.get('preloadedImages').clear();

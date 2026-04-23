@@ -293,6 +293,91 @@ export function isValidSubreddit(subreddit) {
 }
 
 /**
+ * Validates an Instagram username
+ *
+ * @param {string} username - Username to validate
+ * @returns {boolean} True if valid format
+ */
+export function isValidInstagramUsername(username) {
+    if (!username || typeof username !== 'string') return false;
+    return CONFIG.mediaPatterns.INSTAGRAM_USERNAME.test(username);
+}
+
+/**
+ * Fetches the first page of an Instagram profile's media via the Worker.
+ *
+ * @param {string} username - Instagram username (without @)
+ * @returns {Promise<{user: {id: string, username: string, full_name?: string}, items: Array, itemFormat: string, moreAvailable: boolean, nextMaxId: string|null}>}
+ * @throws {Error} On HTTP error or invalid response
+ */
+export async function fetchInstagramProfile(username) {
+    const proxyUrl = `${CONFIG.proxy.URL}?ig=${encodeURIComponent(username)}`;
+
+    let lastError;
+    for (let attempt = 0; attempt < CONFIG.api.RETRY_ATTEMPTS; attempt++) {
+        try {
+            const response = await fetch(proxyUrl);
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const error = new Error(data.error || `HTTP ${response.status}`);
+                error.status = response.status;
+                // Client-side errors (404 private/not-found) are not retried
+                if (response.status === 404 || response.status === 403) throw error;
+                lastError = error;
+                continue;
+            }
+
+            return {
+                user: data.user,
+                items: data.items || [],
+                itemFormat: data.item_format || 'v1',
+                moreAvailable: !!data.more_available,
+                nextMaxId: data.next_max_id || null
+            };
+        } catch (error) {
+            lastError = error;
+            if (error.status === 404 || error.status === 403) throw error;
+            if (attempt < CONFIG.api.RETRY_ATTEMPTS - 1) {
+                await sleep(CONFIG.api.RETRY_BASE_DELAY * Math.pow(2, attempt));
+            }
+        }
+    }
+    throw lastError || new Error('Instagram request failed');
+}
+
+/**
+ * Fetches the next page of an Instagram user's feed via the Worker.
+ *
+ * @param {string} userId - Instagram numeric user ID
+ * @param {string} maxId - Pagination cursor from previous response
+ * @returns {Promise<{items: Array, itemFormat: string, moreAvailable: boolean, nextMaxId: string|null}>}
+ */
+export async function fetchInstagramNextPage(userId, maxId) {
+    const proxyUrl = `${CONFIG.proxy.URL}?ig_feed=${encodeURIComponent(userId)}&max_id=${encodeURIComponent(maxId || '')}`;
+
+    try {
+        const response = await fetch(proxyUrl);
+        const data = await response.json().catch(() => ({}));
+
+        // Any non-2xx during pagination is a soft failure: stop paginating gracefully
+        if (!response.ok) {
+            return { items: [], itemFormat: 'v1', moreAvailable: false, nextMaxId: null };
+        }
+
+        return {
+            items: data.items || [],
+            itemFormat: data.item_format || 'v1',
+            moreAvailable: !!data.more_available,
+            nextMaxId: data.next_max_id || null
+        };
+    } catch (error) {
+        console.warn('Instagram pagination failed:', error);
+        return { items: [], itemFormat: 'v1', moreAvailable: false, nextMaxId: null };
+    }
+}
+
+/**
  * Checks if a URL is a valid Reddit media URL
  *
  * @param {string} url - URL to check
@@ -325,7 +410,10 @@ if (typeof window !== 'undefined') {
         buildRedditUrl,
         fetchPosts,
         isValidSubreddit,
-        isRedditMediaUrl
+        isRedditMediaUrl,
+        isValidInstagramUsername,
+        fetchInstagramProfile,
+        fetchInstagramNextPage
     };
 }
 
@@ -336,5 +424,8 @@ export default {
     buildRedditUrl,
     fetchPosts,
     isValidSubreddit,
-    isRedditMediaUrl
+    isRedditMediaUrl,
+    isValidInstagramUsername,
+    fetchInstagramProfile,
+    fetchInstagramNextPage
 };

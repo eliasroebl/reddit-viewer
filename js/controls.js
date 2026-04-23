@@ -31,8 +31,8 @@ import {
     startBufferMonitoring,
     stopBufferMonitoring
 } from './ui.js';
-import { fetchPosts } from './api.js';
-import { extractMediaFromPosts, preloadExternalVideoUrls } from './media.js';
+import { fetchPosts, fetchInstagramNextPage } from './api.js';
+import { extractMediaFromPosts, extractInstagramMedia, preloadExternalVideoUrls } from './media.js';
 
 /**
  * Event controller for managing all event listeners
@@ -172,7 +172,7 @@ export function triggerInitialPreload() {
 }
 
 /**
- * Loads more posts from the API
+ * Loads more posts from the API (provider-aware)
  */
 async function loadMorePosts() {
     const state = store.getState();
@@ -180,20 +180,34 @@ async function loadMorePosts() {
     store.setState({ loading: true });
 
     try {
-        const { posts, after } = await fetchPosts({
-            subreddit: state.subreddit,
-            sort: state.sort,
-            time: state.time,
-            after: state.after
-        });
-
-        const newSlides = extractMediaFromPosts(posts, { showNSFW: state.showNSFW });
-
-        store.setState({
-            slides: [...state.slides, ...newSlides],
-            after,
-            loading: false
-        });
+        if (state.provider === 'instagram') {
+            if (!state.igUserId || !state.igNextMaxId || !state.igMoreAvailable) {
+                store.setState({ loading: false });
+                return;
+            }
+            const { items, itemFormat, moreAvailable, nextMaxId } =
+                await fetchInstagramNextPage(state.igUserId, state.igNextMaxId);
+            const newSlides = extractInstagramMedia(items, state.subreddit, itemFormat);
+            store.setState({
+                slides: [...state.slides, ...newSlides],
+                igNextMaxId: nextMaxId,
+                igMoreAvailable: moreAvailable && !!nextMaxId,
+                loading: false
+            });
+        } else {
+            const { posts, after } = await fetchPosts({
+                subreddit: state.subreddit,
+                sort: state.sort,
+                time: state.time,
+                after: state.after
+            });
+            const newSlides = extractMediaFromPosts(posts, { showNSFW: state.showNSFW });
+            store.setState({
+                slides: [...state.slides, ...newSlides],
+                after,
+                loading: false
+            });
+        }
 
         updateUI();
     } catch (error) {
