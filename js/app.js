@@ -127,6 +127,8 @@ async function loadSubreddit(subreddit) {
         igUserId: null,
         igNextMaxId: null,
         igMoreAvailable: false,
+        igRetryAfter: 0,
+        igRateLimitStrikes: 0,
         loading: true
     });
     store.get('preloadedImages').clear();
@@ -207,6 +209,8 @@ async function loadInstagram(username) {
         igUserId: null,
         igNextMaxId: null,
         igMoreAvailable: false,
+        igRetryAfter: 0,
+        igRateLimitStrikes: 0,
         loading: true
     });
     store.get('preloadedImages').clear();

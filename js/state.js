@@ -69,6 +69,10 @@ const initialState = {
     igUserId: null,
     igNextMaxId: null,
     igMoreAvailable: false,
+    /** Timestamp until which pagination pauses after an Instagram rate limit */
+    igRetryAfter: 0,
+    /** Consecutive rate limits (doubles the cooldown) */
+    igRateLimitStrikes: 0,
 
     // Sort & filter state
     sort: CONFIG.defaults.SORT,
@@ -306,6 +310,8 @@ const stateHelpers = {
             igUserId: null,
             igNextMaxId: null,
             igMoreAvailable: false,
+            igRetryAfter: 0,
+            igRateLimitStrikes: 0,
             loading: true
         });
         store.get('preloadedImages').clear();

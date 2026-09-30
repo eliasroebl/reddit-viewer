@@ -367,7 +367,9 @@ function igHeaders(username, accept = '*/*') {
         'X-Requested-With': 'XMLHttpRequest',
         'Accept': accept,
         'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': `https://${IG_HOST}/${username ? `${username}/` : ''}`
+        'Referer': `https://${IG_HOST}/${username ? `${username}/` : ''}`,
+        'X-IG-WWW-Claim': '0',
+        'X-ASBD-ID': '129477'
     };
     const cookie = igCookie();
     if (cookie) headers['Cookie'] = cookie;
@@ -434,6 +436,65 @@ async function igApiGet(path, username) {
     const ios = await igFetchJson(`https://${IG_IOS_HOST}${path}`, igIosHeaders());
     if (!ios.ok) ios.reason = `web: ${web.reason}; ios: ${ios.reason}`;
     return ios;
+}
+
+/**
+ * Fetches one page of a user's feed (the paginated source of posts).
+ * Tries the id-based web endpoint, the username-based one the Instagram
+ * website itself uses, and (with a session) the iOS app API.
+ *
+ * @returns {Promise<{ok: boolean, status: number, data?: Object, attempts: Array<string>}>}
+ */
+async function fetchIgFeedPage(userId, username, maxId) {
+    const query = `?count=12${maxId ? `&max_id=${encodeURIComponent(maxId)}` : ''}`;
+    const variants = [];
+    if (userId) {
+        variants.push(['web:id', `https://${IG_HOST}/api/v1/feed/user/${userId}/${query}`, () => igHeaders(username)]);
+    }
+    if (username) {
+        variants.push(['web:username', `https://${IG_HOST}/api/v1/feed/user/${encodeURIComponent(username)}/username/${query}`, () => igHeaders(username)]);
+    }
+    if (userId && igCookie()) {
+        variants.push(['ios:id', `https://${IG_IOS_HOST}/api/v1/feed/user/${userId}/${query}`, igIosHeaders]);
+    }
+
+    const attempts = [];
+    let last = { ok: false, status: 400, reason: 'no user id or username' };
+    for (const [name, url, headers] of variants) {
+        last = await igFetchJson(url, headers());
+        if (last.ok && Array.isArray(last.data.items)) {
+            attempts.push(`${name}: ok (${last.data.items.length} items)`);
+            return { ...last, attempts };
+        }
+        attempts.push(`${name}: HTTP ${last.status} ${last.reason || 'no items'}`);
+        if (last.ok) last = { ok: false, status: 502, reason: 'no items' };
+    }
+    return { ...last, attempts };
+}
+
+/** Builds the profile response from a feed page, or from fallback items if the feed failed */
+function igProfileResponse(userInfo, feed, fallbackItems, fallbackFormat, debug) {
+    if (feed.ok) {
+        const items = feed.data.items;
+        if (!userInfo.id && items[0]?.user?.pk) userInfo.id = String(items[0].user.pk);
+        return jsonResponse({
+            user: userInfo,
+            items,
+            item_format: 'v1',
+            more_available: !!feed.data.more_available,
+            next_max_id: feed.data.next_max_id || null,
+            debug: [...debug, ...feed.attempts]
+        });
+    }
+    return jsonResponse({
+        user: userInfo,
+        items: fallbackItems,
+        item_format: fallbackFormat,
+        more_available: false,
+        next_max_id: null,
+        warning: 'Feed endpoint failed – showing only the posts embedded in the profile (no pagination)',
+        debug: [...debug, ...feed.attempts]
+    });
 }
 
 /** Extracts the JSON object that follows `key` in a string (balanced-brace scan) */
@@ -512,24 +573,28 @@ async function handleInstagramProfile(username) {
         username
     );
 
+    const hasSession = !!env('IG_SESSIONID');
+    const debug = [`session: ${hasSession ? 'yes' : 'no'}`, `web_profile_info: ${profile.ok ? 'ok' : `HTTP ${profile.status} ${profile.reason}`}`];
+
     if (!profile.ok) {
         if (profile.status === 404) {
             return jsonResponse({ error: 'Profile not found' }, 404);
         }
 
-        // Logged-out fallback: parse the public profile page
+        // Fallback: parse the profile page (embeds the first 12 posts)
         const fromHtml = await fetchInstagramProfileFromHtml(username);
-        if (fromHtml) {
-            return jsonResponse({
-                user: fromHtml.user,
-                items: fromHtml.items,
-                item_format: 'v1',
-                more_available: false,
-                next_max_id: null
-            });
+        debug.push(`profile html: ${fromHtml ? `ok (${fromHtml.items.length} items)` : 'failed'}`);
+
+        // With a session the feed endpoint may still work (and paginates)
+        if (fromHtml || hasSession) {
+            const userId = fromHtml?.user.id || null;
+            const feed = await fetchIgFeedPage(userId, username, null);
+            if (feed.ok || fromHtml) {
+                return igProfileResponse({ id: userId, username }, feed, fromHtml?.items || [], 'v1', debug);
+            }
+            debug.push(...feed.attempts);
         }
 
-        const hasSession = !!env('IG_SESSIONID');
         let error;
         if (hasSession) {
             error = profile.status === 429
@@ -543,7 +608,8 @@ async function handleInstagramProfile(username) {
         return jsonResponse({
             error,
             reason: profile.reason,
-            session_configured: hasSession
+            session_configured: hasSession,
+            debug
         }, profile.status === 429 ? 429 : 401);
     }
 
@@ -561,45 +627,28 @@ async function handleInstagramProfile(username) {
 
     const userInfo = { id: user.id, username: user.username, full_name: user.full_name };
 
-    // Step 2: fetch first feed page (needs a session on most profiles)
-    const feed = await igApiGet(`/api/v1/feed/user/${user.id}/?count=33`, username);
-
-    if (!feed.ok) {
-        // Fall back to GraphQL-style items embedded in profile response
-        const edges = user.edge_owner_to_timeline_media?.edges || [];
-        return jsonResponse({
-            user: userInfo,
-            items: edges.map(e => e.node),
-            item_format: 'graphql',
-            more_available: false,
-            next_max_id: null
-        });
-    }
-
-    return jsonResponse({
-        user: userInfo,
-        items: feed.data.items || [],
-        item_format: 'v1',
-        more_available: !!feed.data.more_available,
-        next_max_id: feed.data.next_max_id || null
-    });
+    // Step 2: fetch first feed page (needs a session on most profiles).
+    // If it fails, fall back to the GraphQL-style items embedded in the profile response.
+    const feed = await fetchIgFeedPage(user.id, user.username || username, null);
+    const edges = user.edge_owner_to_timeline_media?.edges || [];
+    return igProfileResponse(userInfo, feed, edges.map(e => e.node), 'graphql', debug);
 }
 
-async function handleInstagramFeed(userId, maxId) {
+async function handleInstagramFeed(userId, username, maxId) {
     if (!IG_USER_ID_RE.test(userId)) {
         return jsonResponse({ error: 'Invalid user_id' }, 400);
+    }
+    if (username && !IG_USERNAME_RE.test(username)) {
+        return jsonResponse({ error: 'Invalid username' }, 400);
     }
     if (maxId && !IG_MAX_ID_RE.test(maxId)) {
         return jsonResponse({ error: 'Invalid max_id' }, 400);
     }
 
-    let feedPath = `/api/v1/feed/user/${userId}/?count=33`;
-    if (maxId) feedPath += `&max_id=${encodeURIComponent(maxId)}`;
-
-    const feed = await igApiGet(feedPath, '');
+    const feed = await fetchIgFeedPage(userId, username || '', maxId);
     if (!feed.ok) {
         return jsonResponse(
-            { error: 'Feed fetch failed', reason: feed.reason, status: feed.status, more_available: false },
+            { error: 'Feed fetch failed', reason: feed.reason, status: feed.status, more_available: false, debug: feed.attempts },
             feed.status
         );
     }
@@ -694,7 +743,7 @@ async function handleRequest(request) {
     // Instagram feed pagination
     const igUserId = params.get('ig_feed');
     if (igUserId) {
-        return handleInstagramFeed(igUserId, params.get('max_id'));
+        return handleInstagramFeed(igUserId, params.get('u'), params.get('max_id'));
     }
 
     // Generic passthrough

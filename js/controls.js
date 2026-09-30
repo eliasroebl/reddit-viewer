@@ -86,6 +86,14 @@ export function navigate(direction) {
                     ? 'Keine weiteren Posts verfügbar'
                     : 'Ende des Feeds erreicht';
                 showEndOfFeedHint(message);
+            } else if (provider === 'instagram') {
+                // More posts exist but aren't loaded yet (e.g. after a rate limit pause)
+                const waitMs = store.get('igRetryAfter') - Date.now();
+                if (waitMs > 0) {
+                    showEndOfFeedHint(`Instagram-Limit – weitere Posts in ${Math.ceil(waitMs / 1000)} s`);
+                } else {
+                    loadMorePosts();
+                }
             }
         }
         return;
@@ -187,6 +195,10 @@ export function triggerInitialPreload() {
     }, 500);
 }
 
+/** Pause after an Instagram rate limit before paginating again (doubles per repeat) */
+const IG_RATE_LIMIT_COOLDOWN = 60000;
+const IG_RATE_LIMIT_MAX_COOLDOWN = 10 * 60000;
+
 /**
  * Loads more posts from the API (provider-aware)
  */
@@ -197,18 +209,41 @@ async function loadMorePosts() {
 
     try {
         if (state.provider === 'instagram') {
-            if (!state.igUserId || !state.igNextMaxId || !state.igMoreAvailable) {
+            if (!state.igUserId || !state.igNextMaxId || !state.igMoreAvailable ||
+                Date.now() < state.igRetryAfter) {
                 store.setState({ loading: false });
                 return;
             }
-            const { items, itemFormat, moreAvailable, nextMaxId } =
-                await fetchInstagramNextPage(state.igUserId, state.igNextMaxId);
+            const { items, itemFormat, moreAvailable, nextMaxId, rateLimited } =
+                await fetchInstagramNextPage(state.igUserId, state.igNextMaxId, state.subreddit);
+
+            if (rateLimited) {
+                // Keep the cursor and pause; the cooldown doubles on each consecutive limit
+                const strikes = state.igRateLimitStrikes;
+                const cooldown = Math.min(IG_RATE_LIMIT_COOLDOWN * Math.pow(2, strikes), IG_RATE_LIMIT_MAX_COOLDOWN);
+                store.setState({
+                    igRetryAfter: Date.now() + cooldown,
+                    igRateLimitStrikes: strikes + 1,
+                    loading: false
+                });
+                // Retry automatically once the cooldown is over
+                setTimeout(() => {
+                    if (store.get('igUserId') === state.igUserId && store.get('igNextMaxId') === state.igNextMaxId) {
+                        loadMorePosts();
+                    }
+                }, cooldown);
+                if (state.slides.length - state.currentIndex <= 1) {
+                    showEndOfFeedHint(`Instagram-Limit – weitere Posts in ${Math.ceil(cooldown / 1000)} s`);
+                }
+                return;
+            }
             const newSlides = extractInstagramMedia(items, state.subreddit, itemFormat);
             const exhausted = newSlides.length === 0 || !moreAvailable || !nextMaxId;
             store.setState({
                 slides: [...state.slides, ...newSlides],
                 igNextMaxId: nextMaxId,
                 igMoreAvailable: moreAvailable && !!nextMaxId,
+                igRateLimitStrikes: 0,
                 loading: false
             });
 

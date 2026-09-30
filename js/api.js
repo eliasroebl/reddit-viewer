@@ -112,6 +112,12 @@ async function fetchViaProxy(url) {
 let jsonpWorks = true;
 
 /**
+ * Set once the Worker reports that Reddit blocks it (no OAuth configured),
+ * so later requests go straight to direct JSONP
+ */
+let workerBlockedByReddit = false;
+
+/**
  * Makes a JSONP request to bypass CORS restrictions
  * Falls back to CORS proxy if JSONP fails (e.g., on mobile)
  *
@@ -123,10 +129,33 @@ let jsonpWorks = true;
  * const data = await jsonp('https://www.reddit.com/r/pics.json');
  */
 export async function jsonp(url) {
-    // Reddit rejects unauthenticated JSON(P) requests since mid-2026, so go
-    // straight to the Worker (OAuth / RSS fallback) when it is configured.
-    // Also skip JSONP if it failed before.
-    if (CONFIG.proxy.ENABLED || !jsonpWorks) {
+    // Reddit rejects anonymous JSON requests since mid-2026. The Worker gets
+    // through with OAuth (or its RSS fallback); if Reddit blocks it anyway, a
+    // direct JSONP request still works for browsers logged into reddit.com,
+    // because the script tag carries the browser's own Reddit cookies.
+    if (CONFIG.proxy.ENABLED) {
+        if (!workerBlockedByReddit) {
+            try {
+                return await fetchViaProxy(url);
+            } catch (error) {
+                if (error.code !== 'reddit_blocked') throw error;
+                workerBlockedByReddit = true;
+                console.info('Worker is blocked by Reddit, using direct JSONP with the browser\'s Reddit login...', error.details);
+            }
+        }
+        try {
+            return await jsonpDirect(url);
+        } catch (jsonpError) {
+            console.warn('Direct JSONP request failed:', jsonpError);
+            const error = new Error('Reddit blocks anonymous access. Log into reddit.com in this browser, or configure REDDIT_CLIENT_ID/REDDIT_CLIENT_SECRET on the Worker.');
+            error.status = 502;
+            error.code = 'reddit_blocked';
+            throw error;
+        }
+    }
+
+    // Skip JSONP if it failed before
+    if (!jsonpWorks) {
         return fetchViaProxy(url);
     }
 
@@ -273,22 +302,7 @@ export function buildRedditUrl(options) {
  */
 export async function fetchPosts(options) {
     const url = buildRedditUrl(options);
-    let data;
-
-    try {
-        data = await fetchWithRetry(url);
-    } catch (error) {
-        // Reddit blocks the Worker's datacenter IPs unless OAuth is configured,
-        // but still serves RSS to regular (residential) browser connections.
-        if (error.code !== 'reddit_blocked') throw error;
-        console.info('Worker could not reach Reddit, loading RSS feed from the browser...', error.details);
-        try {
-            data = await fetchRedditRssDirect(options);
-        } catch (rssError) {
-            console.warn('Browser RSS fallback failed:', rssError);
-            throw error;
-        }
-    }
+    const data = await fetchWithRetry(url);
 
     if (!data?.data) {
         throw new Error('Subreddit not found');
@@ -298,147 +312,6 @@ export async function fetchPosts(options) {
     const after = data.data.after;
 
     return { posts, after };
-}
-
-/**
- * Maps a preview.redd.it thumbnail to the full-size i.redd.it original.
- * preview.redd.it URLs are signed, but i.redd.it serves the same file unsigned.
- *
- * @param {string} thumbUrl - Thumbnail URL
- * @returns {string} Full-size URL (or the input if not mappable)
- */
-function fullSizeRedditImage(thumbUrl) {
-    try {
-        const u = new URL(thumbUrl);
-        if (u.hostname === 'preview.redd.it' && /^\/[\w-]+\.(jpe?g|png|gif|webp)$/i.test(u.pathname)) {
-            return `https://i.redd.it${u.pathname}`;
-        }
-    } catch { /* ignore */ }
-    return thumbUrl;
-}
-
-/**
- * Picks the highest-resolution stream of a v.redd.it video from its DASH manifest
- *
- * @param {string} baseUrl - v.redd.it URL without trailing slash
- * @returns {Promise<string>} Playable MP4 URL
- */
-async function resolveVRedditUrl(baseUrl) {
-    try {
-        const response = await fetch(`${baseUrl}/DASHPlaylist.mpd`);
-        if (response.ok) {
-            const mpd = await response.text();
-            const streams = [...mpd.matchAll(/<BaseURL>\s*(DASH_(\d+)(?:\.mp4)?)\s*<\/BaseURL>/g)]
-                .map(m => ({ file: m[1], height: Number(m[2]) }))
-                .filter(s => s.height <= 1080)
-                .sort((a, b) => b.height - a.height);
-            if (streams.length > 0) {
-                return `${baseUrl}/${streams[0].file}`;
-            }
-        }
-    } catch { /* fall through */ }
-    return `${baseUrl}/DASH_480.mp4`;
-}
-
-/**
- * Converts a Reddit Atom feed into post objects shaped like the JSON API's
- * so the regular media extraction can be reused.
- *
- * @param {string} xml - Atom feed
- * @returns {Array<RedditPost>} Posts
- */
-function parseRedditAtom(xml) {
-    const feed = new DOMParser().parseFromString(xml, 'application/xml');
-    if (feed.getElementsByTagName('parsererror').length > 0) {
-        throw new Error('Invalid RSS feed');
-    }
-
-    const posts = [];
-    for (const entry of feed.getElementsByTagName('entry')) {
-        const text = tag => entry.getElementsByTagName(tag)[0]?.textContent?.trim() || '';
-        const attr = (tag, name) => entry.getElementsByTagName(tag)[0]?.getAttribute(name) || '';
-
-        const name = text('id');
-        if (!name.startsWith('t3_')) continue;
-
-        const content = new DOMParser().parseFromString(text('content'), 'text/html');
-        const linkUrl = [...content.querySelectorAll('a')]
-            .find(a => a.textContent.trim() === '[link]')?.getAttribute('href') || '';
-        const thumb = attr('media:thumbnail', 'url') ||
-            content.querySelector('img')?.getAttribute('src') || '';
-        const link = attr('link', 'href');
-
-        let permalink = '';
-        try { permalink = new URL(link).pathname; } catch { /* ignore */ }
-
-        const post = {
-            id: name.slice(3),
-            name,
-            title: text('title'),
-            author: text('name').replace(/^\/u\//, ''),
-            subreddit: attr('category', 'term'),
-            permalink,
-            url: linkUrl || link,
-            // RSS carries no NSFW flag
-            over_18: false,
-            is_video: false,
-            is_gallery: false
-        };
-
-        if (/^https:\/\/v\.redd\.it\//.test(post.url)) {
-            post.is_video = true;
-        }
-
-        if (thumb) {
-            post.preview = { images: [{ source: { url: fullSizeRedditImage(thumb) } }] };
-        }
-
-        posts.push(post);
-    }
-
-    return posts;
-}
-
-/**
- * Loads a subreddit listing from its RSS feed directly in the browser.
- * Used when the Worker is blocked by Reddit and has no OAuth credentials.
- *
- * @param {Object} options - Same options as buildRedditUrl
- * @returns {Promise<RedditResponse>} Listing shaped like the JSON API response
- */
-async function fetchRedditRssDirect(options) {
-    const {
-        subreddit,
-        sort = CONFIG.defaults.SORT,
-        time = CONFIG.defaults.TIME,
-        after = null,
-        limit = CONFIG.api.POSTS_PER_PAGE
-    } = options;
-
-    let url = `https://www.reddit.com/r/${subreddit}/${sort}/.rss?limit=${limit}`;
-    if (sort === 'top') url += `&t=${time}`;
-    if (after) url += `&after=${after}`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-        const error = new Error(response.status === 404 ? 'Subreddit not found' : `RSS HTTP ${response.status}`);
-        error.status = response.status;
-        throw error;
-    }
-
-    const posts = parseRedditAtom(await response.text());
-
-    await Promise.all(posts.filter(p => p.is_video).map(async post => {
-        post.media = { reddit_video: { fallback_url: await resolveVRedditUrl(post.url.replace(/\/+$/, '')) } };
-    }));
-
-    return {
-        kind: 'Listing',
-        data: {
-            after: posts.length > 0 ? posts[posts.length - 1].name : null,
-            children: posts.map(p => ({ kind: 't3', data: p }))
-        }
-    };
 }
 
 /**
@@ -500,6 +373,12 @@ export async function fetchInstagramProfile(username) {
                 continue;
             }
 
+            if (data.warning) {
+                console.warn('[IG]', data.warning, data.debug);
+            } else if (data.debug) {
+                console.info('[IG]', data.debug);
+            }
+
             return {
                 user: data.user,
                 items: data.items || [],
@@ -520,17 +399,19 @@ export async function fetchInstagramProfile(username) {
 
 /**
  * Fetches the next page of an Instagram user's feed via the Worker.
- * Retries with exponential backoff on transient errors (429/502/503)
- * before silently signalling "no more posts".
+ * Retries once on transient server/network errors. A 429 is not retried
+ * (Instagram's limit lasts minutes); instead the cursor is kept and
+ * `rateLimited` is set so the caller can try again after a cooldown.
  *
  * @param {string} userId - Instagram numeric user ID
  * @param {string} maxId - Pagination cursor from previous response
- * @returns {Promise<{items: Array, itemFormat: string, moreAvailable: boolean, nextMaxId: string|null}>}
+ * @param {string} [username] - Username (enables the web username endpoint)
+ * @returns {Promise<{items: Array, itemFormat: string, moreAvailable: boolean, nextMaxId: string|null, rateLimited?: boolean}>}
  */
-export async function fetchInstagramNextPage(userId, maxId) {
-    const proxyUrl = `${CONFIG.proxy.URL}?ig_feed=${encodeURIComponent(userId)}&max_id=${encodeURIComponent(maxId || '')}`;
-    const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
-    const MAX_ATTEMPTS = 3;
+export async function fetchInstagramNextPage(userId, maxId, username = '') {
+    const proxyUrl = `${CONFIG.proxy.URL}?ig_feed=${encodeURIComponent(userId)}&u=${encodeURIComponent(username)}&max_id=${encodeURIComponent(maxId || '')}`;
+    const RETRY_STATUSES = new Set([500, 502, 503, 504]);
+    const MAX_ATTEMPTS = 2;
     const EMPTY = { items: [], itemFormat: 'v1', moreAvailable: false, nextMaxId: null };
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -545,6 +426,11 @@ export async function fetchInstagramNextPage(userId, maxId) {
                     moreAvailable: !!data.more_available,
                     nextMaxId: data.next_max_id || null
                 };
+            }
+
+            if (response.status === 429) {
+                console.warn('[IG pagination] Rate limited by Instagram, pausing', data);
+                return { ...EMPTY, moreAvailable: true, nextMaxId: maxId, rateLimited: true };
             }
 
             const retriable = RETRY_STATUSES.has(response.status);
