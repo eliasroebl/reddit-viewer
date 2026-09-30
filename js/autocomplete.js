@@ -124,12 +124,22 @@ function extractSearchTerm(value) {
 }
 
 /**
+ * Set once the Worker reports that Reddit search is unavailable (no OAuth
+ * credentials configured), so we stop sending a failing request per keystroke
+ */
+let searchUnavailable = false;
+
+/**
  * Searches for subreddits matching the query
  *
  * @param {string} query - Search query
- * @returns {Promise<Array>} Array of subreddit objects
+ * @returns {Promise<Array|null>} Array of subreddit objects, or null if search is unavailable
  */
 async function searchSubreddits(query) {
+    if (searchUnavailable) {
+        return null;
+    }
+
     if (!query || query.length < AUTOCOMPLETE_CONFIG.MIN_CHARS) {
         return [];
     }
@@ -153,6 +163,12 @@ async function searchSubreddits(query) {
                 nsfw: child.data.over18
             }));
     } catch (error) {
+        if (error.status === 502) {
+            // Subreddit search needs Reddit OAuth on the Worker (no RSS fallback)
+            searchUnavailable = true;
+            console.info('Subreddit autocomplete disabled:', error.message);
+            return null;
+        }
         console.warn('Subreddit search failed:', error);
         return [];
     }
@@ -302,6 +318,11 @@ const handleInput = debounce(async () => {
     showLoading();
 
     const results = await searchSubreddits(searchTerm);
+
+    if (results === null) {
+        hideDropdown();
+        return;
+    }
 
     // Check if query changed while we were searching
     const { searchTerm: currentTerm } = extractSearchTerm(elements.input.value);

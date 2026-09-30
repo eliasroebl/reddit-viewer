@@ -41,6 +41,10 @@ const MAX_VREDDIT_RESOLVES = 40;
 // Instagram config
 const IG_APP_ID = '936619743392459';
 const IG_HOST = 'www.instagram.com';
+// iOS app API (used with a session only; same approach as instaloader)
+const IG_IOS_APP_ID = '124024574287414';
+const IG_IOS_HOST = 'i.instagram.com';
+const IG_IOS_USER_AGENT = 'Instagram 361.0.0.35.82 (iPhone14,5; iOS 17_6_1; en_US; en; scale=3.00; 1170x2532; 674117118)';
 
 const IG_USERNAME_RE = /^[a-zA-Z0-9_.]{1,30}$/;
 const IG_USER_ID_RE = /^\d{1,20}$/;
@@ -337,6 +341,7 @@ async function handleReddit(targetUrl) {
 
     return jsonResponse({
         error: 'Reddit blocked the request. Configure REDDIT_CLIENT_ID/REDDIT_CLIENT_SECRET on the Worker.',
+        code: 'reddit_blocked',
         details: errors
     }, 502);
 }
@@ -369,16 +374,26 @@ function igHeaders(username, accept = '*/*') {
     return headers;
 }
 
+function igIosHeaders() {
+    return {
+        'User-Agent': IG_IOS_USER_AGENT,
+        'X-IG-App-ID': IG_IOS_APP_ID,
+        'Accept': '*/*',
+        'Accept-Language': 'en-US',
+        'Cookie': igCookie()
+    };
+}
+
 /**
  * Fetches an Instagram API URL and never throws on non-JSON answers
  * (login walls come back as redirects or HTML pages).
  *
  * @returns {Promise<{ok: boolean, status: number, data?: Object, reason?: string}>}
  */
-async function igFetchJson(url, username) {
+async function igFetchJson(url, headers) {
     let res;
     try {
-        res = await fetch(url, { headers: igHeaders(username), redirect: 'manual' });
+        res = await fetch(url, { headers, redirect: 'manual' });
     } catch (e) {
         return { ok: false, status: 502, reason: e.message };
     }
@@ -405,6 +420,20 @@ async function igFetchJson(url, username) {
     }
 
     return { ok: true, status: res.status, data };
+}
+
+/**
+ * GETs an Instagram API path (e.g. /api/v1/feed/user/123/) via the web API.
+ * With a session configured, falls back to the iOS app API, which has
+ * separate (per-account) rate limits.
+ */
+async function igApiGet(path, username) {
+    const web = await igFetchJson(`https://${IG_HOST}${path}`, igHeaders(username));
+    if (web.ok || web.status === 404 || !igCookie()) return web;
+
+    const ios = await igFetchJson(`https://${IG_IOS_HOST}${path}`, igIosHeaders());
+    if (!ios.ok) ios.reason = `web: ${web.reason}; ios: ${ios.reason}`;
+    return ios;
 }
 
 /** Extracts the JSON object that follows `key` in a string (balanced-brace scan) */
@@ -478,8 +507,8 @@ async function handleInstagramProfile(username) {
     }
 
     // Step 1: resolve username → user_id via web_profile_info
-    const profile = await igFetchJson(
-        `https://${IG_HOST}/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`,
+    const profile = await igApiGet(
+        `/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`,
         username
     );
 
@@ -500,12 +529,21 @@ async function handleInstagramProfile(username) {
             });
         }
 
-        const hint = env('IG_SESSIONID')
-            ? 'Instagram rejected the configured IG_SESSIONID (expired or logged out?)'
-            : 'Instagram requires a login. Set the IG_SESSIONID secret on the Worker.';
+        const hasSession = !!env('IG_SESSIONID');
+        let error;
+        if (hasSession) {
+            error = profile.status === 429
+                ? 'Instagram rate limit for the configured account – try again later'
+                : 'Instagram rejected the configured IG_SESSIONID (expired or logged out?)';
+        } else {
+            error = profile.status === 429
+                ? 'Instagram blocks anonymous requests from the Worker (rate limit). Set the IG_SESSIONID secret on the Worker.'
+                : 'Instagram requires a login. Set the IG_SESSIONID secret on the Worker.';
+        }
         return jsonResponse({
-            error: profile.status === 429 ? 'Instagram rate limit – try again in a few minutes' : hint,
-            reason: profile.reason
+            error,
+            reason: profile.reason,
+            session_configured: hasSession
         }, profile.status === 429 ? 429 : 401);
     }
 
@@ -524,7 +562,7 @@ async function handleInstagramProfile(username) {
     const userInfo = { id: user.id, username: user.username, full_name: user.full_name };
 
     // Step 2: fetch first feed page (needs a session on most profiles)
-    const feed = await igFetchJson(`https://${IG_HOST}/api/v1/feed/user/${user.id}/?count=33`, username);
+    const feed = await igApiGet(`/api/v1/feed/user/${user.id}/?count=33`, username);
 
     if (!feed.ok) {
         // Fall back to GraphQL-style items embedded in profile response
@@ -555,10 +593,10 @@ async function handleInstagramFeed(userId, maxId) {
         return jsonResponse({ error: 'Invalid max_id' }, 400);
     }
 
-    let feedUrl = `https://${IG_HOST}/api/v1/feed/user/${userId}/?count=33`;
-    if (maxId) feedUrl += `&max_id=${encodeURIComponent(maxId)}`;
+    let feedPath = `/api/v1/feed/user/${userId}/?count=33`;
+    if (maxId) feedPath += `&max_id=${encodeURIComponent(maxId)}`;
 
-    const feed = await igFetchJson(feedUrl, '');
+    const feed = await igApiGet(feedPath, '');
     if (!feed.ok) {
         return jsonResponse(
             { error: 'Feed fetch failed', reason: feed.reason, status: feed.status, more_available: false },
@@ -637,6 +675,15 @@ async function handleRequest(request) {
 
     const url = new URL(request.url);
     const params = url.searchParams;
+
+    // Diagnostics: which secrets are configured (never their values)
+    if (params.has('status')) {
+        return jsonResponse({
+            reddit_oauth: !!env('REDDIT_CLIENT_ID'),
+            reddit_oauth_confidential: !!env('REDDIT_CLIENT_SECRET'),
+            ig_session: !!env('IG_SESSIONID')
+        });
+    }
 
     // Instagram profile + first feed page
     const igUsername = params.get('ig');
