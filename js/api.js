@@ -1,7 +1,8 @@
 /**
  * Reddit Viewer - API Module
  *
- * Handles all communication with the Reddit API using JSONP.
+ * Handles all communication with the Reddit API (via the Cloudflare Worker,
+ * with JSONP only as a fallback when no Worker is configured).
  * Includes retry logic with exponential backoff for reliability.
  *
  * @module api
@@ -61,7 +62,10 @@ export async function fetchViaWorkerProxy(url, options = {}) {
 
     const response = await fetch(proxyUrl, fetchOptions);
     if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const body = await response.clone().json().catch(() => ({}));
+        const error = new Error(body.error || `HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
     }
     return response;
 }
@@ -117,8 +121,10 @@ let jsonpWorks = true;
  * const data = await jsonp('https://www.reddit.com/r/pics.json');
  */
 export async function jsonp(url) {
-    // Skip JSONP if it failed before (use proxy directly)
-    if (!jsonpWorks) {
+    // Reddit rejects unauthenticated JSON(P) requests since mid-2026, so go
+    // straight to the Worker (OAuth / RSS fallback) when it is configured.
+    // Also skip JSONP if it failed before.
+    if (CONFIG.proxy.ENABLED || !jsonpWorks) {
         return fetchViaProxy(url);
     }
 
@@ -193,6 +199,11 @@ export async function fetchWithRetry(url, retries = CONFIG.api.RETRY_ATTEMPTS) {
             return await jsonp(url);
         } catch (error) {
             lastError = error;
+
+            // Client errors (not found, forbidden, ...) won't go away on retry
+            if (error.status >= 400 && error.status < 500 && error.status !== 429) {
+                break;
+            }
 
             // Don't wait after the last attempt
             if (attempt < retries - 1) {
@@ -312,6 +323,7 @@ export function isValidInstagramUsername(username) {
  */
 export async function fetchInstagramProfile(username) {
     const proxyUrl = `${CONFIG.proxy.URL}?ig=${encodeURIComponent(username)}`;
+    const NO_RETRY_STATUSES = new Set([401, 403, 404]);
 
     let lastError;
     for (let attempt = 0; attempt < CONFIG.api.RETRY_ATTEMPTS; attempt++) {
@@ -322,8 +334,8 @@ export async function fetchInstagramProfile(username) {
             if (!response.ok) {
                 const error = new Error(data.error || `HTTP ${response.status}`);
                 error.status = response.status;
-                // Client-side errors (404 private/not-found) are not retried
-                if (response.status === 404 || response.status === 403) throw error;
+                // Client-side errors (404 not-found, 403 private, 401 login wall) are not retried
+                if (NO_RETRY_STATUSES.has(response.status)) throw error;
                 lastError = error;
                 continue;
             }
@@ -337,7 +349,7 @@ export async function fetchInstagramProfile(username) {
             };
         } catch (error) {
             lastError = error;
-            if (error.status === 404 || error.status === 403) throw error;
+            if (NO_RETRY_STATUSES.has(error.status)) throw error;
             if (attempt < CONFIG.api.RETRY_ATTEMPTS - 1) {
                 await sleep(CONFIG.api.RETRY_BASE_DELAY * Math.pow(2, attempt));
             }
